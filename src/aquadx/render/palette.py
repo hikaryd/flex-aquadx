@@ -1,57 +1,69 @@
-"""Цветовая палитра рендера. Single source of truth для всех шаблонов."""
+"""Цветовая палитра рендера: editorial dark, single accent.
+
+Дизайн-направление: Linear/Vercel-минимализм 2025.
+Никаких градиентных пятен, никаких glow-облаков — только solid surfaces,
+тонкие границы (1px ≤ 8% alpha), один акцентный цвет.
+"""
 
 from __future__ import annotations
 
 import skia
 
-# Базовый фон: глубокий пурпур → миднайт.
-C_BG_TOP = skia.ColorSetRGB(0x18, 0x0F, 0x2E)
-C_BG_BOT = skia.ColorSetRGB(0x08, 0x06, 0x14)
+# Базовый фон — графитово-навиди.
+C_BG = skia.ColorSetRGB(0x0A, 0x0B, 0x10)
+C_BG_TOP = C_BG
+C_BG_BOT = skia.ColorSetRGB(0x07, 0x08, 0x0C)
 
-# Акцентные пятна gradient mesh.
-C_MESH_VIOLET = skia.Color4f(0.55, 0.30, 0.95, 1.0)
-C_MESH_PINK = skia.Color4f(0.95, 0.35, 0.65, 1.0)
-C_MESH_CYAN = skia.Color4f(0.20, 0.85, 0.95, 1.0)
+# Поверхности карточек: тонкие dark-glass плитки.
+C_SURFACE = skia.Color4f(1.0, 1.0, 1.0, 0.035)
+C_SURFACE_HI = skia.Color4f(1.0, 1.0, 1.0, 0.055)
+C_GLASS_FILL = C_SURFACE
+C_GLASS_OVER = skia.Color4f(1.0, 1.0, 1.0, 0.015)
+C_GLASS_BORDER = skia.Color4f(1.0, 1.0, 1.0, 0.07)
+C_DIVIDER = skia.Color4f(1.0, 1.0, 1.0, 0.06)
 
-# Glassmorphism слои.
-C_GLASS_FILL = skia.Color4f(0.07, 0.05, 0.16, 0.55)
-C_GLASS_OVER = skia.Color4f(1.0, 1.0, 1.0, 0.04)
-C_GLASS_BORDER = skia.Color4f(1.0, 1.0, 1.0, 0.10)
+# Иерархия текста: pure white → muted.
+C_TEXT_HI = skia.Color4f(0.98, 0.98, 1.0, 1.0)
+C_TEXT_DIM = skia.Color4f(0.66, 0.68, 0.74, 1.0)
+C_TEXT_FAINT = skia.Color4f(0.42, 0.44, 0.50, 1.0)
 
-# Текст: иерархия яркости.
-C_TEXT_HI = skia.Color4f(1.0, 1.0, 1.0, 1.0)
-C_TEXT_DIM = skia.Color4f(0.78, 0.74, 0.92, 1.0)
-C_TEXT_FAINT = skia.Color4f(0.55, 0.50, 0.72, 1.0)
+# Единственный акцент — холодный мятно-лайм. Используется ТОЛЬКО для
+# ключевых чисел (rating, achievement, contribution). Не для декора.
+C_ACCENT = skia.Color4f(0.71, 1.0, 0.42, 1.0)  # #B6FF6B
+C_ACCENT_DIM = skia.Color4f(0.71, 1.0, 0.42, 0.35)
 
-# Achievement gradient pink → cyan.
-C_ACH_A = skia.Color4f(1.0, 0.45, 0.72, 1.0)
-C_ACH_B = skia.Color4f(0.50, 0.85, 1.0, 1.0)
+# Совместимые alias-ы — старые шаблоны их импортируют.
+C_ACH_A = C_ACCENT
+C_ACH_B = C_TEXT_HI
+C_MESH_VIOLET = C_SURFACE_HI
+C_MESH_PINK = C_SURFACE_HI
+C_MESH_CYAN = C_SURFACE_HI
 
-# Цвета пилюль difficulty (порядок DIFFICULTY_NAMES).
+# Difficulty: 4px-маркер слева от пилюли. Сам текст белый.
 DIFFICULTY_COLORS: dict[str, skia.Color4f] = {
-    "BASIC": skia.Color4f(0.30, 0.85, 0.55, 0.90),
-    "ADVANCED": skia.Color4f(1.00, 0.78, 0.20, 0.90),
-    "EXPERT": skia.Color4f(0.95, 0.40, 0.40, 0.90),
-    "MASTER": skia.Color4f(0.55, 0.20, 0.95, 0.90),
-    "RE:MASTER": skia.Color4f(0.95, 0.85, 1.00, 0.95),
-    "UTAGE": skia.Color4f(0.95, 0.25, 0.85, 0.90),
+    "BASIC": skia.Color4f(0.40, 0.90, 0.55, 1.0),
+    "ADVANCED": skia.Color4f(1.00, 0.78, 0.20, 1.0),
+    "EXPERT": skia.Color4f(0.95, 0.40, 0.45, 1.0),
+    "MASTER": skia.Color4f(0.62, 0.45, 1.00, 1.0),
+    "RE:MASTER": skia.Color4f(0.95, 0.85, 1.00, 1.0),
+    "UTAGE": skia.Color4f(0.95, 0.45, 0.95, 1.0),
 }
 
-# Цвета пилюль рангов.
+# Rank: мягкие, но узнаваемые тинты для маленького индикатора.
 RANK_COLORS: dict[str, skia.Color4f] = {
-    "SSS+": skia.Color4f(1.00, 0.45, 0.72, 1.0),
-    "SSS": skia.Color4f(0.95, 0.55, 0.30, 1.0),
-    "SS+": skia.Color4f(0.95, 0.45, 0.20, 1.0),
-    "SS": skia.Color4f(0.85, 0.40, 0.20, 1.0),
-    "S+": skia.Color4f(0.70, 0.35, 0.20, 1.0),
-    "S": skia.Color4f(0.55, 0.30, 0.20, 1.0),
+    "SSS+": C_ACCENT,
+    "SSS": skia.Color4f(0.95, 0.85, 0.45, 1.0),
+    "SS+": skia.Color4f(0.95, 0.70, 0.40, 1.0),
+    "SS": skia.Color4f(0.85, 0.60, 0.40, 1.0),
+    "S+": skia.Color4f(0.70, 0.55, 0.40, 1.0),
+    "S": skia.Color4f(0.60, 0.50, 0.45, 1.0),
 }
 
-# Цвета чипов judgements в TrackResult.
+# Judgements (TrackResult): теплый-холодный градиент по строгости.
 JUDGEMENT_COLORS: dict[str, skia.Color4f] = {
-    "CRIT": skia.Color4f(1.00, 0.78, 0.30, 1.0),
-    "PERFECT": skia.Color4f(1.00, 0.55, 0.30, 1.0),
-    "GREAT": skia.Color4f(0.40, 0.95, 0.55, 1.0),
-    "GOOD": skia.Color4f(0.40, 0.65, 1.0, 1.0),
-    "MISS": skia.Color4f(0.75, 0.70, 0.85, 1.0),
+    "CRIT": C_ACCENT,
+    "PERFECT": skia.Color4f(0.95, 0.85, 0.45, 1.0),
+    "GREAT": skia.Color4f(0.55, 0.85, 1.00, 1.0),
+    "GOOD": skia.Color4f(0.55, 0.60, 0.75, 1.0),
+    "MISS": skia.Color4f(0.95, 0.40, 0.45, 1.0),
 }

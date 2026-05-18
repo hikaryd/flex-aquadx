@@ -1,4 +1,9 @@
-"""Шаблон RatingFrame: best35/best15 grid карточек как PNG 1920×1200."""
+"""Шаблон RatingFrame: B35/B15 grid, editorial dark, single accent.
+
+Дизайн: Linear/Vercel-минимализм. Solid dark background, тонкие dark-glass
+плитки с 1px бордером 7% alpha, один акцентный цвет (мятно-лайм) только для
+ключевых чисел. Никаких градиентных пятен и glow.
+"""
 
 from __future__ import annotations
 
@@ -8,16 +13,13 @@ import skia
 
 from aquadx.render import fonts
 from aquadx.render.palette import (
-    C_ACH_A,
-    C_ACH_B,
+    C_ACCENT,
+    C_BG,
     C_BG_BOT,
-    C_BG_TOP,
+    C_DIVIDER,
     C_GLASS_BORDER,
-    C_GLASS_FILL,
-    C_GLASS_OVER,
-    C_MESH_CYAN,
-    C_MESH_PINK,
-    C_MESH_VIOLET,
+    C_SURFACE,
+    C_SURFACE_HI,
     C_TEXT_DIM,
     C_TEXT_FAINT,
     C_TEXT_HI,
@@ -25,7 +27,25 @@ from aquadx.render.palette import (
     RANK_COLORS,
 )
 
-W, H = 1920, 1200
+# Canvas: 1920×1080 (16:9).
+W, H = 1920, 1080
+
+# Поля и сетка.
+MARGIN = 40
+GUTTER = 12
+
+# Hero (top, full width).
+HERO_H = 140
+
+# B35: 7 cols × 5 rows, плотная плитка.
+B35_COLS, B35_ROWS = 7, 5
+CARD_W_B35 = (W - 2 * MARGIN - (B35_COLS - 1) * GUTTER) / B35_COLS  # 252.57
+CARD_H_B35 = 84
+
+# B15: 5 cols × 3 rows, чуть крупнее.
+B15_COLS, B15_ROWS = 5, 3
+CARD_W_B15 = (W - 2 * MARGIN - (B15_COLS - 1) * GUTTER) / B15_COLS  # 358.40
+CARD_H_B15 = 72
 
 
 @dataclass(frozen=True)
@@ -52,36 +72,27 @@ class RatingFrameInput:
     brand: str = "flex-aquadx"
 
 
-def _gradient_mesh(canvas: skia.Canvas) -> None:
+# ──────────────── низкоуровневые помощники ────────────────
+
+
+def _background(canvas: skia.Canvas) -> None:
+    """Solid фон — без gradient mesh. Очень слабая вертикальная виньетка."""
+    canvas.drawRect(skia.Rect.MakeWH(W, H), skia.Paint(AntiAlias=True, Color=C_BG))
+    # Тонкий vertical виньет для глубины (НЕ цветной).
     paint = skia.Paint(AntiAlias=True)
     paint.setShader(
         skia.GradientShader.MakeLinear(
             points=[skia.Point(0, 0), skia.Point(0, H)],
-            colors=[C_BG_TOP, C_BG_BOT],
+            colors=[skia.Color4f(1, 1, 1, 0.0), skia.Color4f(0, 0, 0, 0.25)],
         )
     )
     canvas.drawRect(skia.Rect.MakeWH(W, H), paint)
-    for center, radius, color in (
-        (skia.Point(W * 0.10, H * 0.10), W * 0.55, C_MESH_VIOLET),
-        (skia.Point(W * 0.90, H * 0.10), W * 0.50, C_MESH_CYAN),
-        (skia.Point(W * 0.50, H * 0.95), W * 0.60, C_MESH_PINK),
-    ):
-        p = skia.Paint(AntiAlias=True)
-        p.setShader(
-            skia.GradientShader.MakeRadial(
-                center=center,
-                radius=radius,
-                colors=[color, skia.Color4f(color.fR, color.fG, color.fB, 0.0)],
-            )
-        )
-        p.setBlendMode(skia.BlendMode.kPlus)
-        canvas.drawRect(skia.Rect.MakeWH(W, H), p)
+    _ = C_BG_BOT  # alias оставлен для совместимости импортов
 
 
-def _glass(canvas: skia.Canvas, rect: skia.Rect, radius: float = 18.0) -> None:
+def _surface(canvas: skia.Canvas, rect: skia.Rect, *, radius: float = 16.0) -> None:
     rrect = skia.RRect.MakeRectXY(rect, radius, radius)
-    canvas.drawRRect(rrect, skia.Paint(AntiAlias=True, Color4f=C_GLASS_FILL))
-    canvas.drawRRect(rrect, skia.Paint(AntiAlias=True, Color4f=C_GLASS_OVER))
+    canvas.drawRRect(rrect, skia.Paint(AntiAlias=True, Color4f=C_SURFACE))
     canvas.drawRRect(
         rrect,
         skia.Paint(
@@ -101,7 +112,7 @@ def _text(
     size: float,
     *,
     color: skia.Color4f = C_TEXT_HI,
-    role: str = "ui-bold",
+    role: str = "ui",
 ) -> float:
     font = skia.Font(fonts.get(role), size)
     paint = skia.Paint(AntiAlias=True, Color4f=color)
@@ -117,11 +128,18 @@ def _text_right(
     size: float,
     *,
     color: skia.Color4f = C_TEXT_HI,
-    role: str = "ui-bold",
+    role: str = "ui",
 ) -> None:
     font = skia.Font(fonts.get(role), size)
     w = font.measureText(s)
     canvas.drawString(s, right_x - w, y, font, skia.Paint(AntiAlias=True, Color4f=color))
+
+
+def _label(canvas: skia.Canvas, s: str, x: float, y: float) -> None:
+    """Маленький uppercase-лейбл-«eyebrow», как в Linear UI."""
+    font = skia.Font(fonts.get("ui-bold"), 10.5)
+    paint = skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT)
+    canvas.drawString(s.upper(), x, y, font, paint)
 
 
 def _ellipsized(font: skia.Font, s: str, max_w: float) -> str:
@@ -140,214 +158,321 @@ def _ellipsized(font: skia.Font, s: str, max_w: float) -> str:
 def _jacket(canvas: skia.Canvas, image: skia.Image | None, x: float, y: float, size: float) -> None:
     rect = skia.Rect.MakeXYWH(x, y, size, size)
     canvas.save()
-    canvas.clipRRect(skia.RRect.MakeRectXY(rect, 10, 10), True)
+    canvas.clipRRect(skia.RRect.MakeRectXY(rect, 8, 8), True)
     if image is None:
-        paint = skia.Paint(AntiAlias=True)
-        paint.setShader(
-            skia.GradientShader.MakeLinear(
-                points=[skia.Point(x, y), skia.Point(x + size, y + size)],
-                colors=[C_MESH_VIOLET, C_MESH_PINK],
-            )
-        )
-        canvas.drawRect(rect, paint)
+        # Плейсхолдер: тёмная solid + тонкая обводка. Без gradient.
+        canvas.drawRect(rect, skia.Paint(AntiAlias=True, Color4f=C_SURFACE_HI))
     else:
         canvas.drawImageRect(image, rect, skia.SamplingOptions(skia.CubicResampler.Mitchell()))
     canvas.restore()
+    canvas.drawRRect(
+        skia.RRect.MakeRectXY(rect, 8, 8),
+        skia.Paint(
+            AntiAlias=True,
+            Style=skia.Paint.kStroke_Style,
+            StrokeWidth=1.0,
+            Color4f=C_GLASS_BORDER,
+        ),
+    )
 
 
-def _pill(
-    canvas: skia.Canvas,
-    x: float,
-    y: float,
-    label: str,
-    bg: skia.Color4f,
-    *,
-    fg: skia.Color4f = skia.Color4f(0.05, 0.02, 0.10, 1.0),
-    size: float = 14.0,
-    pad_x: float = 10.0,
-    pad_y: float = 4.0,
-) -> float:
-    font = skia.Font(fonts.get("ui-bold"), size)
-    text_w = float(font.measureText(label))
-    h = size + pad_y * 2
-    w = text_w + pad_x * 2
+def _diff_marker(canvas: skia.Canvas, x: float, y: float, color: skia.Color4f) -> None:
+    """4×12 px вертикальная полоска — маркер сложности слева от уровня."""
     canvas.drawRoundRect(
-        skia.Rect.MakeXYWH(x, y, w, h),
-        h / 2,
-        h / 2,
-        skia.Paint(AntiAlias=True, Color4f=bg),
+        skia.Rect.MakeXYWH(x, y, 3, 12),
+        1.5,
+        1.5,
+        skia.Paint(AntiAlias=True, Color4f=color),
     )
-    canvas.drawString(
-        label,
-        x + pad_x,
-        y + size + pad_y - 3,
-        font,
-        skia.Paint(AntiAlias=True, Color4f=fg),
-    )
-    return w
 
 
-CARD_W = 326.0
-CARD_H = 86.0
+# ──────────────── карточки рейтинг-фрейма ────────────────
 
 
-def _draw_card(
+def _draw_card_b35(
     canvas: skia.Canvas, x: float, y: float, item: RatingItem, image: skia.Image | None, idx: int
 ) -> None:
-    _glass(canvas, skia.Rect.MakeXYWH(x, y, CARD_W, CARD_H), radius=12)
-    # Jacket.
-    _jacket(canvas, image, x + 8, y + 8, 70.0)
+    _surface(canvas, skia.Rect.MakeXYWH(x, y, CARD_W_B35, CARD_H_B35), radius=12)
 
-    # Текстовая зона.
-    tx = x + 88
-    title_font = skia.Font(fonts.get("cjk-bold"), 17)
-    title = _ellipsized(title_font, item.title or f"#{item.music_id}", CARD_W - 95 - 50)
-    canvas.drawString(title, tx, y + 22, title_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI))
+    # Jacket 60×60 слева.
+    jacket_size = 60.0
+    _jacket(canvas, image, x + 12, y + 12, jacket_size)
 
-    # Pills row: difficulty + LV.
-    pill_y = y + 30
+    # Текстовая колонка.
+    tx = x + 12 + jacket_size + 12  # = x + 84
+    inner_w = CARD_W_B35 - (tx - x) - 12
+
+    # Сверху: difficulty marker (3px) + LV (мелкий) + rank (справа).
     diff_color = DIFFICULTY_COLORS.get(item.difficulty, DIFFICULTY_COLORS["MASTER"])
-    diff_short = item.difficulty if item.difficulty != "RE:MASTER" else "Re:M"
-    w1 = _pill(canvas, tx, pill_y, diff_short, diff_color, size=11, pad_x=7, pad_y=3)
-    _pill(
-        canvas,
-        tx + w1 + 5,
-        pill_y,
+    _diff_marker(canvas, tx, y + 14, diff_color)
+    lv_font = skia.Font(fonts.get("mono"), 11)
+    canvas.drawString(
         f"LV {item.level:g}",
-        skia.Color4f(0.20, 0.55, 1.0, 0.85),
-        size=11,
-        pad_x=7,
-        pad_y=3,
+        tx + 9,
+        y + 23,
+        lv_font,
+        skia.Paint(AntiAlias=True, Color4f=C_TEXT_DIM),
+    )
+    # Difficulty short name справа от LV (тонкая uppercase).
+    diff_short = item.difficulty.replace("RE:MASTER", "RE:M")
+    diff_font = skia.Font(fonts.get("ui-bold"), 10)
+    canvas.drawString(
+        diff_short,
+        tx + 9 + lv_font.measureText(f"LV {item.level:g}") + 8,
+        y + 23,
+        diff_font,
+        skia.Paint(AntiAlias=True, Color4f=diff_color),
     )
 
-    # Achievement big.
-    ach_font = skia.Font(fonts.get("display"), 24)
+    # Rank — top right corner. Точка + текст.
+    rank_color = RANK_COLORS.get(item.rank, C_TEXT_FAINT)
+    canvas.drawCircle(
+        x + CARD_W_B35 - 12 - 4, y + 18, 3, skia.Paint(AntiAlias=True, Color4f=rank_color)
+    )
+    _text_right(
+        canvas, item.rank, x + CARD_W_B35 - 24, y + 22, 11, color=rank_color, role="ui-bold"
+    )
+
+    # Title — посередине, ellipsized.
+    title_font = skia.Font(fonts.get("cjk-bold"), 14)
+    title = _ellipsized(title_font, item.title or f"#{item.music_id}", inner_w - 8)
+    canvas.drawString(title, tx, y + 44, title_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI))
+
+    # Achievement — крупно (mono), белый.
+    ach_font = skia.Font(fonts.get("mono-bold"), 20)
     canvas.drawString(
         f"{item.achievement:.4f}%",
         tx,
-        y + 76,
+        y + 72,
         ach_font,
         skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
     )
 
-    # Rank pill справа.
-    rank_color = RANK_COLORS.get(item.rank, skia.Color4f(0.50, 0.50, 0.70, 1.0))
-    rank_font = skia.Font(fonts.get("ui-bold"), 14)
-    rw = rank_font.measureText(item.rank) + 18
-    rank_rect = skia.Rect.MakeXYWH(x + CARD_W - rw - 10, y + 10, rw, 22)
-    canvas.drawRoundRect(rank_rect, 11, 11, skia.Paint(AntiAlias=True, Color4f=rank_color))
+    # Contribution — bottom-right, акцентный.
+    contrib_font = skia.Font(fonts.get("mono-bold"), 14)
+    contrib = f"→ {item.rating_contribution}"
+    cw = contrib_font.measureText(contrib)
     canvas.drawString(
-        item.rank,
-        rank_rect.left() + 9,
-        rank_rect.top() + 16,
-        rank_font,
-        skia.Paint(AntiAlias=True, Color4f=skia.Color4f(0.05, 0.02, 0.10, 1.0)),
-    )
-
-    # Rating contribution.
-    contrib_font = skia.Font(fonts.get("mono-bold"), 16)
-    contrib_text = f"→ {item.rating_contribution}"
-    cw = contrib_font.measureText(contrib_text)
-    canvas.drawString(
-        contrib_text,
-        x + CARD_W - cw - 10,
-        y + 76,
+        contrib,
+        x + CARD_W_B35 - cw - 12,
+        y + 72,
         contrib_font,
-        skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
+        skia.Paint(AntiAlias=True, Color4f=C_ACCENT),
     )
 
-    # Index в углу.
-    idx_font = skia.Font(fonts.get("mono"), 11)
+    # Index — справа от title, мелкий, faint.
+    idx_font = skia.Font(fonts.get("mono"), 10)
     idx_text = f"#{idx:02d}"
     canvas.drawString(
         idx_text,
-        x + CARD_W - idx_font.measureText(idx_text) - 10,
+        x + CARD_W_B35 - idx_font.measureText(idx_text) - 12,
         y + 42,
         idx_font,
         skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
     )
 
 
+def _draw_card_b15(
+    canvas: skia.Canvas, x: float, y: float, item: RatingItem, image: skia.Image | None, idx: int
+) -> None:
+    _surface(canvas, skia.Rect.MakeXYWH(x, y, CARD_W_B15, CARD_H_B15), radius=12)
+
+    jacket_size = 48.0
+    _jacket(canvas, image, x + 12, y + 12, jacket_size)
+
+    tx = x + 12 + jacket_size + 14
+    inner_w = CARD_W_B15 - (tx - x) - 12
+
+    diff_color = DIFFICULTY_COLORS.get(item.difficulty, DIFFICULTY_COLORS["MASTER"])
+    _diff_marker(canvas, tx, y + 13, diff_color)
+
+    lv_font = skia.Font(fonts.get("mono"), 11)
+    canvas.drawString(
+        f"LV {item.level:g}",
+        tx + 9,
+        y + 22,
+        lv_font,
+        skia.Paint(AntiAlias=True, Color4f=C_TEXT_DIM),
+    )
+    diff_short = item.difficulty.replace("RE:MASTER", "RE:M")
+    diff_font = skia.Font(fonts.get("ui-bold"), 10)
+    canvas.drawString(
+        diff_short,
+        tx + 9 + lv_font.measureText(f"LV {item.level:g}") + 8,
+        y + 22,
+        diff_font,
+        skia.Paint(AntiAlias=True, Color4f=diff_color),
+    )
+
+    # Title.
+    title_font = skia.Font(fonts.get("cjk-bold"), 14)
+    title = _ellipsized(title_font, item.title or f"#{item.music_id}", inner_w - 100)
+    canvas.drawString(title, tx, y + 42, title_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI))
+
+    # Achievement.
+    ach_font = skia.Font(fonts.get("mono-bold"), 18)
+    canvas.drawString(
+        f"{item.achievement:.4f}%",
+        tx,
+        y + 62,
+        ach_font,
+        skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
+    )
+
+    # Rank + index в правой колонке.
+    rank_color = RANK_COLORS.get(item.rank, C_TEXT_FAINT)
+    canvas.drawCircle(
+        x + CARD_W_B15 - 12 - 4, y + 18, 3, skia.Paint(AntiAlias=True, Color4f=rank_color)
+    )
+    _text_right(
+        canvas, item.rank, x + CARD_W_B15 - 24, y + 22, 11, color=rank_color, role="ui-bold"
+    )
+
+    idx_font = skia.Font(fonts.get("mono"), 10)
+    idx_text = f"#{idx:02d}"
+    canvas.drawString(
+        idx_text,
+        x + CARD_W_B15 - idx_font.measureText(idx_text) - 12,
+        y + 38,
+        idx_font,
+        skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
+    )
+
+    # Contribution — справа крупно, акцентный.
+    contrib_font = skia.Font(fonts.get("mono-bold"), 16)
+    contrib = f"+{item.rating_contribution}"
+    cw = contrib_font.measureText(contrib)
+    canvas.drawString(
+        contrib,
+        x + CARD_W_B15 - cw - 12,
+        y + 62,
+        contrib_font,
+        skia.Paint(AntiAlias=True, Color4f=C_ACCENT),
+    )
+
+
+# ──────────────── публичный render ────────────────
+
+
 def render(inp: RatingFrameInput) -> bytes:
     fonts.preload()
     surface = skia.Surface(W, H)
     with surface as canvas:
-        _gradient_mesh(canvas)
+        _background(canvas)
 
-        # Hero (слева).
-        _glass(canvas, skia.Rect.MakeXYWH(40, 40, 460, 1120))
-        _text(canvas, inp.username, 70, 110, 60, role="display")
-        _text(canvas, "RATING", 70, 160, 22, color=C_TEXT_FAINT)
-        font_big = skia.Font(fonts.get("display"), 96)
-        paint_big = skia.Paint(AntiAlias=True)
-        paint_big.setShader(
-            skia.GradientShader.MakeLinear(
-                points=[skia.Point(70, 170), skia.Point(70 + 380, 250)],
-                colors=[C_ACH_A, C_ACH_B],
-            )
-        )
-        canvas.drawString(str(inp.rating), 70, 250, font_big, paint_big)
+        # ════ Hero (top, full width) ════
+        hero_x, hero_y = MARGIN, MARGIN
+        hero_w, hero_h = W - 2 * MARGIN, HERO_H
+        _surface(canvas, skia.Rect.MakeXYWH(hero_x, hero_y, hero_w, hero_h), radius=20)
 
-        # Pill «B35 + B15».
-        _glass(canvas, skia.Rect.MakeXYWH(70, 280, 400, 90), radius=14)
-        _text(canvas, "B35", 90, 320, 22, color=C_TEXT_DIM)
-        _text(canvas, f"{inp.b35_sum}", 90, 358, 32, color=C_TEXT_HI, role="display")
-        _text(canvas, "B15", 250, 320, 22, color=C_TEXT_DIM)
-        _text(canvas, f"{inp.b15_sum}", 250, 358, 32, color=C_TEXT_HI, role="display")
-
-        _text(canvas, "B35 + B15", 70, 410, 22, color=C_TEXT_FAINT)
+        # Left column: username + tagline.
+        _label(canvas, "PLAYER", hero_x + 28, hero_y + 32)
+        _text(canvas, inp.username, hero_x + 28, hero_y + 78, 48, role="display")
         _text(
             canvas,
-            f"{inp.b35_sum + inp.b15_sum}",
-            70,
-            454,
-            44,
-            color=C_ACH_A,
-            role="display",
+            inp.brand + " · best35 + best15",
+            hero_x + 28,
+            hero_y + 108,
+            14,
+            color=C_TEXT_FAINT,
+            role="ui",
         )
 
-        # Brand под hero.
-        _text(canvas, inp.brand, 70, H - 80, 22, color=C_ACH_A, role="ui-bold")
-        _text(canvas, "best35 + best15", 70, H - 56, 18, color=C_TEXT_FAINT)
+        # Middle: total rating — гигантское моно-число (акцент).
+        rating_label_x = hero_x + 540
+        _label(canvas, "RATING", rating_label_x, hero_y + 32)
+        rating_font = skia.Font(fonts.get("mono-bold"), 88)
+        rating_str = str(inp.rating)
+        rw = rating_font.measureText(rating_str)
+        canvas.drawString(
+            rating_str,
+            rating_label_x,
+            hero_y + 110,
+            rating_font,
+            skia.Paint(AntiAlias=True, Color4f=C_ACCENT),
+        )
 
-        # Grid B35 — 5 столбцов × 7 строк, начиная с (540, 40).
-        grid_x, grid_y = 540, 40
-        gap = 12
-        _text(canvas, "B35", grid_x, grid_y + 22, 22, color=C_TEXT_DIM)
+        # Тонкий вертикальный divider.
+        divider_x = rating_label_x + rw + 56
+        canvas.drawRect(
+            skia.Rect.MakeXYWH(divider_x, hero_y + 28, 1, hero_h - 56),
+            skia.Paint(AntiAlias=True, Color4f=C_DIVIDER),
+        )
+
+        # Right: B35 / B15 / TOTAL — небольшие блочки в линию.
+        stats_x = divider_x + 36
+        stat_gap = 200
+        for i, (label, val) in enumerate(
+            (("B35", inp.b35_sum), ("B15", inp.b15_sum), ("TOTAL", inp.b35_sum + inp.b15_sum))
+        ):
+            sx = stats_x + i * stat_gap
+            _label(canvas, label, sx, hero_y + 32)
+            val_font = skia.Font(fonts.get("mono-bold"), 36)
+            canvas.drawString(
+                f"{val}",
+                sx,
+                hero_y + 78,
+                val_font,
+                skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
+            )
+
+        # Дата/timestamp в правом верхнем углу hero — мелко.
         _text_right(
             canvas,
-            f"35 карт · сумма {inp.b35_sum}",
-            W - 40,
-            grid_y + 22,
-            18,
+            f"{len(inp.b35)} + {len(inp.b15)} карт",
+            hero_x + hero_w - 28,
+            hero_y + 38,
+            12,
             color=C_TEXT_FAINT,
+            role="mono",
         )
-        y0 = grid_y + 38
+
+        # ════ B35 grid ════
+        section_y = MARGIN + HERO_H + 32
+        _label(canvas, f"B35  ·  СУММА {inp.b35_sum}", MARGIN, section_y)
+        _text_right(
+            canvas,
+            "ТОП 35 ПО ОЦЕНКЕ",
+            W - MARGIN,
+            section_y,
+            10.5,
+            color=C_TEXT_FAINT,
+            role="ui-bold",
+        )
+
+        grid_y = section_y + 16
         for i, (item, image) in enumerate(zip(inp.b35, inp.jackets_b35, strict=False)):
-            col = i % 5
-            row = i // 5
-            x = grid_x + col * (CARD_W + gap)
-            y = y0 + row * (CARD_H + gap)
-            _draw_card(canvas, x, y, item, image, i + 1)
+            if i >= B35_COLS * B35_ROWS:
+                break
+            col = i % B35_COLS
+            row = i // B35_COLS
+            x = MARGIN + col * (CARD_W_B35 + GUTTER)
+            y = grid_y + row * (CARD_H_B35 + GUTTER)
+            _draw_card_b35(canvas, x, y, item, image, i + 1)
 
-        # Grid B15 — ниже, 5 столбцов × 3 строки.
-        y_b15 = y0 + 7 * (CARD_H + gap) + 28
-        _text(canvas, "B15", grid_x, y_b15, 22, color=C_TEXT_DIM)
+        # ════ B15 grid ════
+        b35_end_y = grid_y + B35_ROWS * CARD_H_B35 + (B35_ROWS - 1) * GUTTER
+        section2_y = b35_end_y + 28
+        _label(canvas, f"B15  ·  СУММА {inp.b15_sum}", MARGIN, section2_y)
         _text_right(
             canvas,
-            f"15 карт · сумма {inp.b15_sum}",
-            W - 40,
-            y_b15,
-            18,
+            "ТОП 15 ИЗ НОВОЙ ВЕРСИИ",
+            W - MARGIN,
+            section2_y,
+            10.5,
             color=C_TEXT_FAINT,
+            role="ui-bold",
         )
-        y_b15_grid = y_b15 + 16
+
+        grid2_y = section2_y + 16
         for i, (item, image) in enumerate(zip(inp.b15, inp.jackets_b15, strict=False)):
-            col = i % 5
-            row = i // 5
-            x = grid_x + col * (CARD_W + gap)
-            y = y_b15_grid + row * (CARD_H + gap)
-            _draw_card(canvas, x, y, item, image, 35 + i + 1)
+            if i >= B15_COLS * B15_ROWS:
+                break
+            col = i % B15_COLS
+            row = i // B15_COLS
+            x = MARGIN + col * (CARD_W_B15 + GUTTER)
+            y = grid2_y + row * (CARD_H_B15 + GUTTER)
+            _draw_card_b15(canvas, x, y, item, image, 35 + i + 1)
 
     image = surface.makeImageSnapshot()
     return bytes(image.encodeToData(skia.kPNG, 95))

@@ -113,7 +113,7 @@ def test_rating_template_renders_valid_png() -> None:
     img = Image.open(BytesIO(png))
     img.verify()
     img2 = Image.open(BytesIO(png))
-    assert img2.size == (1920, 1200)
+    assert img2.size == (1920, 1080)
     assert img2.format == "PNG"
 
 
@@ -228,7 +228,7 @@ def test_rating_card_endpoint_returns_png(client: TestClient) -> None:
     img = Image.open(BytesIO(response.content))
     img.verify()
     img2 = Image.open(BytesIO(response.content))
-    assert img2.size == (1920, 1200)
+    assert img2.size == (1920, 1080)
 
 
 def test_ttl_cache_supports_bytes() -> None:

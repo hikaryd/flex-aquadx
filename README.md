@@ -11,7 +11,7 @@
 - `GET /v1/players/{username}/maimai/favorites`, `/trend`, `/scores`
 - `GET /v1/maimai/ranking?page=N&size=100`
 - `GET /v1/players/{username}/maimai/recent/card.png?index=0` — PNG-карточка одного скора (1920×1080)
-- `GET /v1/players/{username}/maimai/rating/card.png` — PNG-карточка B35+B15 (1920×1200)
+- `GET /v1/players/{username}/maimai/rating/card.png` — PNG-карточка B35+B15 (1920×1080)
 - `GET /v1/assets/maimai/music/{musicId}/jacket` — 302 / `?proxy=true` / `?format=json`
 - `GET /v1/assets/maimai/meta/music`
 - `GET /healthz`, `/readyz`, `/v1/info`, `/docs`

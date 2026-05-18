@@ -66,30 +66,20 @@ class TrackResultInput:
 
 
 def _gradient_mesh(canvas: skia.Canvas) -> None:
-    paint = skia.Paint(AntiAlias=True)
-    paint.setShader(
+    """Editorial background: solid dark + слабый вертикальный затемняющий vignette.
+
+    Никаких цветных gradient-пятен. Имя функции сохранено для совместимости.
+    """
+    canvas.drawRect(skia.Rect.MakeWH(W, H), skia.Paint(AntiAlias=True, Color=C_BG_TOP))
+    vignette = skia.Paint(AntiAlias=True)
+    vignette.setShader(
         skia.GradientShader.MakeLinear(
             points=[skia.Point(0, 0), skia.Point(0, H)],
-            colors=[C_BG_TOP, C_BG_BOT],
+            colors=[skia.Color4f(1, 1, 1, 0.0), skia.Color4f(0, 0, 0, 0.30)],
         )
     )
-    canvas.drawRect(skia.Rect.MakeWH(W, H), paint)
-
-    for center, radius, color in (
-        (skia.Point(W * 0.18, H * 0.12), W * 0.55, C_MESH_VIOLET),
-        (skia.Point(W * 0.85, H * 0.95), W * 0.50, C_MESH_PINK),
-        (skia.Point(W * 0.78, H * 0.05), W * 0.35, C_MESH_CYAN),
-    ):
-        p = skia.Paint(AntiAlias=True)
-        p.setShader(
-            skia.GradientShader.MakeRadial(
-                center=center,
-                radius=radius,
-                colors=[color, skia.Color4f(color.fR, color.fG, color.fB, 0.0)],
-            )
-        )
-        p.setBlendMode(skia.BlendMode.kPlus)
-        canvas.drawRect(skia.Rect.MakeWH(W, H), p)
+    canvas.drawRect(skia.Rect.MakeWH(W, H), vignette)
+    _ = (C_BG_BOT, C_MESH_VIOLET, C_MESH_PINK, C_MESH_CYAN)
 
 
 def _glass(canvas: skia.Canvas, rect: skia.Rect, radius: float = 28.0) -> None:
@@ -209,48 +199,57 @@ def _jacket(canvas: skia.Canvas, image: skia.Image | None, x: float, y: float, s
 
 
 def _rank_emblem(
-    canvas: skia.Canvas, cx: float, cy: float, label: str, radius: float = 140.0
+    canvas: skia.Canvas, cx: float, cy: float, label: str, radius: float = 130.0
 ) -> None:
-    glow = skia.Paint(
-        AntiAlias=True,
-        Color4f=skia.Color4f(0.65, 0.30, 1.0, 0.55),
-        ImageFilter=skia.ImageFilters.Blur(50.0, 50.0),
+    # Чистая editorial-эмблема: dark glass круг + 1px бордер + текст.
+    canvas.drawCircle(
+        cx, cy, radius, skia.Paint(AntiAlias=True, Color4f=skia.Color4f(1, 1, 1, 0.05))
     )
-    canvas.drawCircle(cx, cy, radius * 0.95, glow)
-
-    ring = skia.Paint(AntiAlias=True)
-    ring.setShader(
-        skia.GradientShader.MakeRadial(
-            center=skia.Point(cx, cy),
-            radius=radius,
-            colors=[
-                skia.Color4f(0.40, 0.18, 0.85, 1.0),
-                skia.Color4f(0.10, 0.05, 0.30, 1.0),
-            ],
-        )
-    )
-    canvas.drawCircle(cx, cy, radius, ring)
     canvas.drawCircle(
         cx,
         cy,
-        radius - 2,
+        radius,
         skia.Paint(
             AntiAlias=True,
             Style=skia.Paint.kStroke_Style,
-            StrokeWidth=4.0,
-            Color4f=skia.Color4f(1.0, 1.0, 1.0, 0.85),
+            StrokeWidth=1.5,
+            Color4f=skia.Color4f(1, 1, 1, 0.18),
+        ),
+    )
+    # Внутреннее кольцо как тонкая орбита.
+    canvas.drawCircle(
+        cx,
+        cy,
+        radius - 14,
+        skia.Paint(
+            AntiAlias=True,
+            Style=skia.Paint.kStroke_Style,
+            StrokeWidth=1.0,
+            Color4f=skia.Color4f(1, 1, 1, 0.08),
         ),
     )
 
-    size = 68.0 if len(label) <= 4 else 56.0
+    # Мелкая uppercase-метка над лейблом.
+    sub_font = skia.Font(fonts.get("ui-bold"), 11)
+    sub_text = "RANK"
+    sw = sub_font.measureText(sub_text)
+    canvas.drawString(
+        sub_text,
+        cx - sw / 2,
+        cy - radius * 0.45,
+        sub_font,
+        skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
+    )
+
+    size = 78.0 if len(label) <= 4 else 64.0
     font = skia.Font(fonts.get("display"), size)
     tw = font.measureText(label)
     canvas.drawString(
         label,
         cx - tw / 2,
-        cy + size * 0.35,
+        cy + size * 0.30,
         font,
-        skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
+        skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
     )
 
 
@@ -405,10 +404,10 @@ def render(inp: TrackResultInput) -> bytes:
         _ = chip_w
 
         ach_text = f"{inp.achievement:.4f}"
-        ach_w = _gradient_text(canvas, ach_text, 90, 580, 230)
-        _text(canvas, "%", 90 + ach_w + 12, 580, 100, color=C_ACH_A, role="display")
+        ach_w = _gradient_text(canvas, ach_text, 90, 590, 200)
+        _text(canvas, "%", 90 + ach_w + 10, 590, 88, color=C_ACH_A, role="display")
 
-        _rank_emblem(canvas, cx=1200, cy=520, label=inp.rank, radius=140)
+        _rank_emblem(canvas, cx=1230, cy=520, label=inp.rank, radius=110)
 
         # NOTE ACCURACY.
         _glass(canvas, skia.Rect.MakeXYWH(40, 760, 900, 280))
