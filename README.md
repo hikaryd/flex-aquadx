@@ -10,13 +10,41 @@
 - `GET /v1/players/{username}/maimai/recent` — недавние плеи
 - `GET /v1/players/{username}/maimai/favorites`, `/trend`, `/scores`
 - `GET /v1/maimai/ranking?page=N&size=100`
+- `GET /v1/players/{username}/maimai/recent/card.png?index=0` — PNG-карточка одного скора (1920×1080)
+- `GET /v1/players/{username}/maimai/rating/card.png` — PNG-карточка B35+B15 (1920×1200)
 - `GET /v1/assets/maimai/music/{musicId}/jacket` — 302 / `?proxy=true` / `?format=json`
 - `GET /v1/assets/maimai/meta/music`
 - `GET /healthz`, `/readyz`, `/v1/info`, `/docs`
 
 ## Стек
 
-Python 3.12+ · FastAPI · httpx (async) · pydantic v2 · cachetools · structlog · tenacity · pytest+respx · ruff · mypy --strict · Docker.
+Python 3.12+ · FastAPI · httpx (async) · pydantic v2 · cachetools · structlog · tenacity · skia-python (рендер PNG) · Pillow · pytest+respx · ruff · mypy --strict · Docker.
+
+## Рендер карточек
+
+PNG-карточки рисуются прямо в Python через [skia-python](https://github.com/kyamagu/skia-python)
+(биндинги Skia из Chromium). Без headless-браузера, без второго рантайма — всё in-process.
+
+- `GET /v1/players/{u}/maimai/recent/card.png?index=N&theme=dark&scale=1` — карточка
+  одного результата (`оригинал maimaibot`-стиль: jacket, ачивмент с gradient,
+  rank emblem с glow, judgements, note accuracy).
+- `GET /v1/players/{u}/maimai/rating/card.png?theme=dark` — сводный B35+B15 фрейм.
+
+Особенности:
+
+- Современный визуал: gradient mesh background, glassmorphism через `SkImageFilters.Blur`,
+  achievement gradient pink → cyan, rank emblem с outer glow.
+- CJK + emoji корректно: HarfBuzz shaping встроен в Skia; используем Inter +
+  JetBrains Mono + Noto Sans JP из `assets/fonts/` (OFL 1.1).
+- Кэш PNG: 60 секунд по `(endpoint, ETag)`. ETag детерминирован: `sha256(version |
+  font_pack_hash | canonical_dto | theme | scale)[:16]`. Апгрейд шрифтов или
+  шаблона автоматически инвалидирует кэш.
+- Backpressure: `asyncio.Semaphore(RENDER_CONCURRENCY)` + acquire-таймаут →
+  HTTP 503 + `Retry-After` при перегрузе.
+- SSRF guard: jacket-URL должен быть `https://` с `netloc` точно из
+  `{AQUADX_DATA_HOST, AQUADX_DATA_HOST_FALLBACK}`; редиректы httpx отключены.
+
+Атрибуция шрифтов: см. [`assets/fonts/LICENSES.md`](assets/fonts/LICENSES.md).
 
 ## Quickstart
 

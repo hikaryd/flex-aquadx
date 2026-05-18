@@ -9,6 +9,9 @@ from aquadx.api.v1 import (
     assets as v1_assets,
 )
 from aquadx.api.v1 import (
+    cards_image as v1_cards_image,
+)
+from aquadx.api.v1 import (
     players as v1_players,
 )
 from aquadx.api.v1 import (
@@ -42,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(v1_assets.router)
     app.include_router(v1_rankings.router)
     app.include_router(v1_scores.router)
+    app.include_router(v1_cards_image.router)
     return app
 
 

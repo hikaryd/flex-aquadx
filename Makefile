@@ -1,4 +1,4 @@
-.PHONY: install dev test lint format verify smoke compose-up compose-down clean
+.PHONY: install dev test lint format verify smoke compose-up compose-down clean render-gallery
 
 UV ?= uv
 
@@ -38,5 +38,9 @@ compose-down:
 	docker compose down
 
 clean:
-	rm -rf .venv .pytest_cache .ruff_cache .mypy_cache .coverage htmlcov dist build
+	rm -rf .venv .pytest_cache .ruff_cache .mypy_cache .coverage htmlcov dist build poc_track.png poc_rating.png
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+# Сгенерировать poc_track.png и poc_rating.png для глаз-валидации шаблонов.
+render-gallery:
+	$(UV) run python scripts/render_poc.py

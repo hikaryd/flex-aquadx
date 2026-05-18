@@ -34,6 +34,13 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    # Параметры рендера PNG-карточек.
+    render_concurrency: int = 2
+    render_acquire_timeout_s: float = 2.0
+    jacket_fetch_timeout_s: float = 3.0
+    cache_image_max_bytes_mb: int = 64
+    cache_ttl_image_seconds: int = 60
+
 
 _settings: Settings | None = None
 
