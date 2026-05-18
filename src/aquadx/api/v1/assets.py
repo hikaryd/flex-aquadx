@@ -1,4 +1,4 @@
-"""/v1/assets/* — asset URL resolver and (optional) streaming proxy for maimai jackets and items."""
+"""/v1/assets/* — резолвер URL ассетов и (опционально) проксирование jacket/items maimai."""
 
 from __future__ import annotations
 
@@ -22,22 +22,20 @@ def _resolve_item_url(kind: str, item_id: int, settings: Settings) -> str:
 
 
 async def _proxy(url: str) -> StreamingResponse:
-    client = httpx.AsyncClient(timeout=10.0)
-    try:
-        head_response = await client.get(url)
-    except httpx.HTTPError as exc:
-        await client.aclose()
-        raise UpstreamError(f"CDN unreachable: {url}") from exc
-    if head_response.status_code == 404:
-        await client.aclose()
-        raise NotFoundError(f"Asset not found: {url}", upstream_status=404)
-    if head_response.status_code >= 400:
-        status = head_response.status_code
-        await client.aclose()
-        raise UpstreamError(f"CDN error {status}: {url}", upstream_status=status)
-    content = head_response.content
-    media_type = head_response.headers.get("content-type", "application/octet-stream")
-    await client.aclose()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            upstream = await client.get(url)
+        except httpx.HTTPError as exc:
+            raise UpstreamError(f"CDN unreachable: {url}") from exc
+        if upstream.status_code == 404:
+            raise NotFoundError(f"Asset not found: {url}", upstream_status=404)
+        if upstream.status_code >= 400:
+            raise UpstreamError(
+                f"CDN error {upstream.status_code}: {url}",
+                upstream_status=upstream.status_code,
+            )
+        content = upstream.content
+        media_type = upstream.headers.get("content-type", "application/octet-stream")
 
     async def _iter() -> AsyncIterator[bytes]:
         yield content
@@ -47,7 +45,7 @@ async def _proxy(url: str) -> StreamingResponse:
 
 @router.get(
     "/music/{music_id}/jacket",
-    summary="Music jacket image (redirect/proxy/json)",
+    summary="Картинка обложки трека (redirect/proxy/json)",
     response_model=None,
 )
 async def music_jacket(
@@ -66,7 +64,7 @@ async def music_jacket(
 
 @router.get(
     "/items/{kind}/{item_id}",
-    summary="Item icon image (redirect/proxy/json)",
+    summary="Иконка предмета (redirect/proxy/json)",
     response_model=None,
 )
 async def item_icon(
@@ -84,7 +82,7 @@ async def item_icon(
     return RedirectResponse(url=url, status_code=302)
 
 
-@router.get("/meta/music", summary="Full music metadata (cached, TTL 24h)")
+@router.get("/meta/music", summary="Полные метаданные музыки (кэш, TTL 24ч)")
 async def music_meta_all(
     loader: MusicMetaLoader = Depends(get_meta_loader),
 ) -> dict[str, object]:

@@ -8,17 +8,17 @@ from aquadx.settings import Settings, get_settings
 router = APIRouter(tags=["meta"])
 
 
-@router.get("/healthz", summary="Liveness probe")
+@router.get("/healthz", summary="Liveness-проба")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/readyz", summary="Readiness probe")
+@router.get("/readyz", summary="Readiness-проба")
 async def readyz() -> dict[str, str]:
     return {"status": "ready"}
 
 
-@router.get("/v1/info", summary="Service info")
+@router.get("/v1/info", summary="Информация о сервисе")
 async def info() -> dict[str, str | None]:
     s: Settings = get_settings()
     return {

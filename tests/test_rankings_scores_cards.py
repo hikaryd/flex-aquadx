@@ -52,28 +52,6 @@ def test_ranking_by_username_not_found(client: TestClient) -> None:
     assert response.status_code == 404
 
 
-def test_scores_playlog_detail(client: TestClient) -> None:
-    with respx.mock(assert_all_called=False) as r:
-        r.get(BASE + f"{MAI2}/playlog").mock(
-            return_value=Response(
-                200,
-                json={
-                    "id": 123,
-                    "musicId": 42,
-                    "level": 3,
-                    "achievement": 1005000,
-                    "playDate": "2026-05-18",
-                },
-            )
-        )
-        response = client.get("/v1/scores/123")
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["playlog_id"] == 123
-    assert data["achievement"] == 100.5
-    assert data["rank"] == "SSS+"  # 1005000 raw is exactly the SSS+ threshold
-
-
 def test_scores_user_music_from_list(client: TestClient) -> None:
     payload = [
         {"musicId": 1, "level": 0, "achievement": 1000000},
@@ -97,17 +75,3 @@ def test_scores_user_music_from_list(client: TestClient) -> None:
     # Upstream contract: username as query param, body is raw [int, ...]
     assert "username=maisan" in str(captured["url"])
     assert captured["body"] == [1, 2]
-
-
-def test_cards_summary(client: TestClient) -> None:
-    with respx.mock(assert_all_called=False) as r:
-        r.get(BASE + f"{CARD}/user-games").mock(
-            return_value=Response(
-                200,
-                json=[{"game": "mai2", "rating": 14500, "name": "MaiSan"}],
-            )
-        )
-        response = client.get("/v1/cards/maisan")
-    assert response.status_code == 200
-    body = response.json()
-    assert body["data"]["raw"]["games"][0]["game"] == "mai2"

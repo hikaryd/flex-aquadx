@@ -7,9 +7,9 @@ from dataclasses import dataclass
 
 @dataclass
 class TokenBucket:
-    """Async token bucket rate limiter. Smooth burst-tolerant pacing.
+    """Асинхронный rate-лимитер по схеме token bucket. Сглаженный темп с допуском всплесков.
 
-    rate = tokens per second; capacity defaults to rate (1s of bursting).
+    rate = токенов в секунду; capacity по умолчанию равна rate (запас на 1 секунду всплеска).
     """
 
     rate: float

@@ -1,7 +1,7 @@
-"""Loads and caches the upstream music meta JSON (maimai DX).
+"""Загрузка и кэширование upstream music meta JSON (maimai DX).
 
-The upstream CDN exposes `/maimai/meta/00/all-music.json`. We fetch it lazily
-with a 24h TTL and provide get_music(music_id) → MusicMeta lookups.
+CDN upstream отдаёт `/maimai/meta/00/all-music.json`. Получаем лениво
+с TTL 24 часа и предоставляем поиск get(music_id) → MusicMeta.
 """
 
 from __future__ import annotations
@@ -18,25 +18,25 @@ from aquadx.utils.logging import get_logger
 
 log = get_logger("aquadx.meta")
 
-# Path on DATA_HOST holding music meta — verified against deployed AquaNet
-# bundle at aquadx.net: `${DATA_HOST}/d/mai2/00/all-music.json` (NB: game code
-# is `mai2`, not `maimai`).
+# Путь на DATA_HOST с music meta — сверен с продовым бандлом AquaNet на
+# aquadx.net: `${DATA_HOST}/d/mai2/00/all-music.json` (внимание: код игры
+# `mai2`, а не `maimai`).
 META_PATH = "/d/mai2/00/all-music.json"
 
 
 def jacket_url(music_id: int, base: str) -> str:
-    """Build the absolute CDN URL pattern from AquaNet's scoring.ts.
+    """Сборка абсолютного URL обложки по паттерну из AquaNet/scoring.ts.
 
-    Pattern: `${DATA_HOST}/d/mai2/music/00{pad(musicId,6).substring(2)}.png`
-    NB: upstream uses the game code `mai2`, not `maimai`.
+    Паттерн: `${DATA_HOST}/d/mai2/music/00{pad(musicId,6).substring(2)}.png`.
+    Внимание: upstream использует код игры `mai2`, а не `maimai`.
     """
     padded = f"{music_id:06d}"
     return f"{base.rstrip('/')}/d/mai2/music/00{padded[2:]}.png"
 
 
 class MusicMetaLoader:
-    # When the CDN is unreachable we don't want every player request to retry
-    # for `http_timeout_s` seconds — back off for this long between attempts.
+    # Когда CDN недоступен, мы не хотим, чтобы каждый запрос игрока висел
+    # `http_timeout_s` секунд — выдерживаем такой бэкофф между попытками.
     NEGATIVE_BACKOFF_S: float = 60.0
 
     def __init__(self, settings: Settings | None = None) -> None:
@@ -70,8 +70,8 @@ class MusicMetaLoader:
             url = self.settings.aquadx_data_host.rstrip("/") + META_PATH
             owns = http is None
             client = http or httpx.AsyncClient(timeout=self.settings.http_timeout_s)
-            # Record attempt BEFORE the network call so concurrent callers in
-            # the same backoff window will skip even if this one fails.
+            # Помечаем попытку ДО сетевого вызова: одновременные вызовы в
+            # том же окне бэкоффа пропустят запрос, даже если этот упадёт.
             self._last_attempt_at = time.monotonic()
             try:
                 response = await client.get(url)
@@ -92,13 +92,13 @@ class MusicMetaLoader:
         return dict(self._cache)
 
     def seed(self, items: dict[int, MusicMeta]) -> None:
-        """For tests: bypass network."""
+        """Для тестов: подкинуть данные без обращения в сеть."""
         self._cache = dict(items)
         self._loaded_at = time.monotonic()
 
 
 def _str_or_none(v: Any) -> str | None:
-    """Coerce upstream values to str — some name/artist fields arrive as ints."""
+    """Приводит значение upstream к str — у некоторых записей name/artist приходят int."""
     if v is None:
         return None
     if isinstance(v, str):

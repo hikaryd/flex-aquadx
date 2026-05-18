@@ -1,4 +1,4 @@
-"""/v1/players/* endpoints: cross-game profile, maimai-specific deep views."""
+"""/v1/players/* — кросс-игровой профиль и глубокий maimai-профиль."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ async def _user_summary(client: AquadxClient, username: str) -> dict[str, Any]:
 @router.get(
     "/{username}",
     response_model=ResponseEnvelope[Player],
-    summary="Cross-game player profile",
+    summary="Кросс-игровой профиль игрока",
 )
 async def player(
     username: str,
@@ -85,7 +85,7 @@ async def player(
 @router.get(
     "/{username}/maimai",
     response_model=ResponseEnvelope[MaimaiProfile],
-    summary="Deep maimai profile (summary + detail)",
+    summary="Глубокий maimai-профиль (summary + detail)",
 )
 async def maimai_profile(
     username: str,
@@ -111,7 +111,7 @@ async def maimai_profile(
 @router.get(
     "/{username}/maimai/rating",
     response_model=ResponseEnvelope[RatingFrame],
-    summary="best35 / best15 with inline music meta",
+    summary="best35 / best15 с инлайн music meta",
 )
 async def maimai_rating(
     username: str,
@@ -135,7 +135,7 @@ async def maimai_rating(
 @router.get(
     "/{username}/maimai/recent",
     response_model=ResponseEnvelope[list[RecentPlay]],
-    summary="Recent plays, normalised",
+    summary="Недавние заходы, нормализованные",
 )
 async def maimai_recent(
     username: str,
@@ -149,8 +149,8 @@ async def maimai_recent(
     async def _load() -> list[RecentPlay]:
         raw = await client.get(f"{MAI2_PREFIX}/recent", params={"username": username})
         rows = raw if isinstance(raw, list) else []
-        # Cache the full list; slice post-cache so distinct ?limit=N values
-        # share one upstream fetch per TTL window.
+        # Кэшируем полный список; срез делаем после кэша — так разные ?limit=N
+        # делят один upstream-запрос в окне TTL.
         return map_recent_plays(rows, music_lookup=lookup, limit=None)
 
     envelope = await cached_envelope(
@@ -163,7 +163,7 @@ async def maimai_recent(
 @router.get(
     "/{username}/maimai/favorites",
     response_model=ResponseEnvelope[list[FavoriteEntry]],
-    summary="Favorite tracks",
+    summary="Избранные треки",
 )
 async def maimai_favorites(
     username: str,
@@ -186,7 +186,7 @@ async def maimai_favorites(
 @router.get(
     "/{username}/maimai/trend",
     response_model=ResponseEnvelope[list[TrendPoint]],
-    summary="Rating timeseries",
+    summary="Временной ряд рейтинга",
 )
 async def maimai_trend(
     username: str,

@@ -1,4 +1,4 @@
-"""FastAPI dependency injection: AquadxClient, MetaLoader, Cache."""
+"""FastAPI-зависимости: AquadxClient, MetaLoader, Cache."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def get_meta_loader() -> MusicMetaLoader:
 
 async def music_lookup() -> dict[int, object]:
     loader = get_meta_loader()
-    # Best-effort: never crash a player request if upstream meta is unreachable.
+    # Best-effort: запрос игрока не должен падать, если upstream meta недоступен.
     with contextlib.suppress(Exception):
         await loader.load()
     return loader.all()  # type: ignore[return-value]

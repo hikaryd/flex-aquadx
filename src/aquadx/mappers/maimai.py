@@ -1,4 +1,4 @@
-"""maimai DX mappers: turn raw upstream blobs into clean domain DTOs."""
+"""Мапперы maimai DX: превращают сырые блоки upstream в чистые domain DTO."""
 
 from __future__ import annotations
 
@@ -18,10 +18,10 @@ from aquadx.models.domain import (
     TrendPoint,
 )
 
-# achievement is stored * 10000. 101.5234% in UI = 1015234 raw.
+# achievement хранится умноженным на 10000: 101.5234% в UI = 1015234 сырых единиц.
 ACHIEVEMENT_SCALE = 10_000.0
 
-# Rank thresholds in raw units (per AquaDX util.kt mai2Scores)
+# Пороги рангов в сырых единицах (см. AquaDX util.kt mai2Scores).
 RANK_THRESHOLDS: tuple[tuple[int, Rank], ...] = (
     (1005000, "SSS+"),
     (1000000, "SSS"),
@@ -57,7 +57,7 @@ def difficulty_name(level: int) -> Difficulty | str:
     return f"LEVEL_{level}"
 
 
-def _maybe_int(v: Any) -> int | None:
+def maybe_int(v: Any) -> int | None:
     try:
         return int(v)
     except (TypeError, ValueError):
@@ -65,10 +65,10 @@ def _maybe_int(v: Any) -> int | None:
 
 
 def parse_rating_csv(blob: str | None) -> list[tuple[int, int, int]]:
-    """Parse the upstream `recent_rating` / `recent_rating_new` CSV.
+    """Разбор CSV `recent_rating` / `recent_rating_new` из upstream.
 
-    Format: `"musicId:level:achievement,..."`.
-    Returns list of (music_id, level, achievement_raw).
+    Формат: `"musicId:level:achievement,..."`.
+    Возвращает список (music_id, level, achievement_raw).
     """
     if not blob:
         return []
@@ -80,7 +80,7 @@ def parse_rating_csv(blob: str | None) -> list[tuple[int, int, int]]:
         parts = entry.split(":")
         if len(parts) < 3:
             continue
-        mid, lvl, ach = _maybe_int(parts[0]), _maybe_int(parts[1]), _maybe_int(parts[2])
+        mid, lvl, ach = maybe_int(parts[0]), maybe_int(parts[1]), maybe_int(parts[2])
         if mid is None or lvl is None or ach is None:
             continue
         out.append((mid, lvl, ach))
@@ -112,29 +112,28 @@ def map_rating_frame(
     *,
     music_lookup: dict[int, MusicMeta],
 ) -> RatingFrame:
-    """Map the upstream /game/mai2/user-rating response into a clean RatingFrame.
+    """Маппинг ответа upstream `/game/mai2/user-rating` в чистый RatingFrame.
 
-    Upstream shape: `{"best35": [["mid","lvl","ach"], ...], "best15": [...], "musicList": [...]}`.
+    Форма upstream: `{"best35": [["mid","lvl","ach"], ...], "best15": [...], "musicList": [...]}`.
     """
 
     def _from_list(entries: list[list[str]]) -> list[RatedTrack]:
-        """Upstream encodes entries as `[musicId, level, ratingContribution, achievement]`
-        (4 elements). Legacy/empty users may still produce 3-element entries — in that
-        case the third value is the achievement and there is no rating contribution.
-        """
+        # Upstream кодирует записи как `[musicId, level, ratingContribution, achievement]`
+        # (4 элемента). Legacy/пустые игроки могут отдавать 3-элементные записи —
+        # тогда третье значение это achievement, а вклада в рейтинг нет.
         out: list[RatedTrack] = []
         for entry in entries:
             if len(entry) < 3:
                 continue
-            mid, lvl = _maybe_int(entry[0]), _maybe_int(entry[1])
+            mid, lvl = maybe_int(entry[0]), maybe_int(entry[1])
             if mid is None or lvl is None:
                 continue
             if len(entry) >= 4:
-                rating = _maybe_int(entry[2])
-                achievement = _maybe_int(entry[3])
+                rating = maybe_int(entry[2])
+                achievement = maybe_int(entry[3])
             else:
                 rating = None
-                achievement = _maybe_int(entry[2])
+                achievement = maybe_int(entry[2])
             if achievement is None:
                 continue
             out.append(
@@ -161,36 +160,36 @@ def map_recent_plays(
 ) -> list[RecentPlay]:
     out: list[RecentPlay] = []
     for row in rows:
-        data = dict(row)
-        mid = _maybe_int(data.get("musicId"))
+        mid = maybe_int(row.get("musicId"))
         if mid is None:
             continue
-        ach_raw = _maybe_int(data.get("achievement")) or 0
-        lvl = _maybe_int(data.get("level")) or 0
+        ach_raw = maybe_int(row.get("achievement")) or 0
+        lvl = maybe_int(row.get("level")) or 0
         pct = normalize_achievement(ach_raw)
-        # upstream `/recent` does NOT expose the global database PK in its JSON
-        # (only `playlogId` which is the 1/2/3 in-session track number). The
-        # `id` key here is the real PK used by `/playlog?id=X` and our test
-        # fixtures — read it ONLY if explicitly present.
+        # upstream `/recent` НЕ отдаёт глобальный PK базы данных в JSON
+        # (только `playlogId` — внутрисессионный номер трека 1/2/3,
+        # который мы кладём в `track_no`). Ключ `id` здесь — настоящий PK,
+        # как он отдаётся в admin/write контекстах и тестовых фикстурах:
+        # читаем только если он явно присутствует.
         out.append(
             RecentPlay(
-                playlog_id=_maybe_int(data.get("id")),
+                playlog_id=maybe_int(row.get("id")),
                 music=music_lookup.get(mid),
                 difficulty=difficulty_name(lvl),
                 achievement=pct,
                 rank=rank_label(pct),
-                deluxe_score=_maybe_int(
-                    data.get("deluxscore") or data.get("deluxScore") or data.get("deluxscoreMax")
+                deluxe_score=maybe_int(
+                    row.get("deluxscore") or row.get("deluxScore") or row.get("deluxscoreMax")
                 ),
-                is_full_combo=data.get("isFullCombo"),
-                is_all_perfect=data.get("isAllPerfect"),
-                is_new_record=data.get("isNewRecord"),
-                max_combo=_maybe_int(data.get("maxCombo")),
-                play_date=data.get("playDate"),
-                user_play_date=data.get("userPlayDate"),
-                after_rating=_maybe_int(data.get("afterRating")),
-                track_no=_maybe_int(data.get("trackNo") or data.get("playlogId")),
-                place_name=data.get("placeName"),
+                is_full_combo=row.get("isFullCombo"),
+                is_all_perfect=row.get("isAllPerfect"),
+                is_new_record=row.get("isNewRecord"),
+                max_combo=maybe_int(row.get("maxCombo")),
+                play_date=row.get("playDate"),
+                user_play_date=row.get("userPlayDate"),
+                after_rating=maybe_int(row.get("afterRating")),
+                track_no=maybe_int(row.get("trackNo") or row.get("playlogId")),
+                place_name=row.get("placeName"),
             )
         )
     if limit is not None:
@@ -205,14 +204,14 @@ def map_favorites(
 ) -> list[FavoriteEntry]:
     out: list[FavoriteEntry] = []
     for row in rows:
-        mid = _maybe_int(row.get("musicId") or row.get("music_id"))
+        mid = maybe_int(row.get("musicId") or row.get("music_id"))
         if mid is None:
             continue
         out.append(
             FavoriteEntry(
                 music_id=mid,
                 music=music_lookup.get(mid),
-                order_id=_maybe_int(row.get("orderId") or row.get("order_id")),
+                order_id=maybe_int(row.get("orderId") or row.get("order_id")),
             )
         )
     return out
@@ -222,7 +221,7 @@ def map_trend(rows: list[dict[str, Any]]) -> list[TrendPoint]:
     out: list[TrendPoint] = []
     for row in rows:
         date = row.get("playDate") or row.get("date")
-        rating = _maybe_int(row.get("afterRating") or row.get("rating"))
+        rating = maybe_int(row.get("afterRating") or row.get("rating"))
         if not date or rating is None:
             continue
         out.append(TrendPoint(date=str(date), rating=rating))

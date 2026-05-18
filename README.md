@@ -10,8 +10,6 @@
 - `GET /v1/players/{username}/maimai/recent` — недавние плеи
 - `GET /v1/players/{username}/maimai/favorites`, `/trend`, `/scores`
 - `GET /v1/maimai/ranking?page=N&size=100`
-- `GET /v1/scores/{playlogId}`
-- `GET /v1/cards/{cardId}`
 - `GET /v1/assets/maimai/music/{musicId}/jacket` — 302 / `?proxy=true` / `?format=json`
 - `GET /v1/assets/maimai/meta/music`
 - `GET /healthz`, `/readyz`, `/v1/info`, `/docs`
@@ -44,7 +42,7 @@ make compose-up
 
 | Поле в нашем DTO | Что значит |
 |---|---|
-| `playlog_id` | глобальный PK для `/v1/scores/{id}`. **В ответе `/recent` всегда `null`** — upstream его не отдаёт |
+| `playlog_id` | всегда `null` — upstream `/recent` глобальный PK не отдаёт |
 | `track_no` | 1/2/3 — номер трека внутри кредита (бывший `playlogId` / `trackNo`) |
 | `place_name` | имя аркадного аппарата (`placeName`) |
 | `user_play_date` | точное локальное время прохождения |
@@ -60,9 +58,7 @@ GET /v1/players/Sigma/maimai/recent?limit=200
                       AND user_play_date = "2025-05-14 01:19:30"
 ```
 
-### `/v1/scores/{playlog_id}` — ограниченная применимость
-
-Эндпоинт работает: проксирует upstream `/api/v2/game/mai2/playlog?id=X` по глобальному PK. Но **получить этот PK из публичного `/recent` нельзя** — он доступен только из админ/бот контекста (прямой доступ к БД upstream). Для истории игрока используй `/v1/players/{u}/maimai/recent` напрямую.
+> `/v1/scores/{playlog_id}` намеренно **не реализован** — upstream `/api/v2/game/mai2/playlog?id=X` требует глобальный PK базы данных, который в публичном API через `/recent` не достать. Если когда-нибудь добавим write/admin контекст, где этот PK становится доступен — можно вернуть.
 
 ### Wire-формат `user-music-from-list`
 
@@ -114,7 +110,7 @@ Upstream шлёт `[musicId, level, ratingContribution, achievement]` — чет
 src/aquadx/
 ├── main.py              # фабрика FastAPI-приложения
 ├── settings.py          # конфиг из env
-├── api/                 # роутеры (/v1/players, /v1/maimai/ranking, /v1/scores, /v1/cards, /v1/assets)
+├── api/                 # роутеры (/v1/players, /v1/maimai/ranking, /v1/players/{u}/maimai/scores, /v1/assets)
 ├── clients/             # AquadxClient (httpx + retry + rate-limit)
 ├── models/              # domain DTO (pydantic v2)
 ├── mappers/             # нормализация полей и enrichment music meta

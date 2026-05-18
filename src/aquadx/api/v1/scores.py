@@ -1,11 +1,10 @@
-"""/v1/scores/{playlogId} and /v1/players/{username}/maimai/scores."""
+"""/v1/players/{username}/maimai/scores — пакетный запрос скоров по списку musicId."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, Response
 
 from aquadx.api.deps import get_cache, get_client, music_lookup
-from aquadx.api.errors import NotFoundError
 from aquadx.cache.base import Cache, cached_envelope
 from aquadx.clients.aquadx import AquadxClient
 from aquadx.mappers.maimai import map_recent_plays
@@ -18,49 +17,14 @@ MAI2_PREFIX = "/api/v2/game/mai2"
 
 
 @router.get(
-    "/v1/scores/{playlog_id}",
-    response_model=ResponseEnvelope[RecentPlay],
-    summary="Single playlog by global database PK",
-    description=(
-        "Fetch one play by its global database primary key. "
-        "Note: the public `/recent` endpoint does NOT expose this PK — "
-        "upstream `playlogId` in `/recent` is the in-session track number, "
-        "not a stable identifier. This route is therefore only useful when "
-        "you already know a PK (e.g. from upstream admin/bot access). "
-        "For player history, consume `/v1/players/{username}/maimai/recent` directly."
-    ),
-)
-async def playlog_detail(
-    playlog_id: int,
-    response: Response,
-    client: AquadxClient = Depends(get_client),
-    lookup: dict[int, MusicMeta] = Depends(music_lookup),
-    cache: Cache = Depends(get_cache),
-    settings: Settings = Depends(get_settings),
-) -> ResponseEnvelope[RecentPlay]:
-    async def _load() -> RecentPlay:
-        raw = await client.get(f"{MAI2_PREFIX}/playlog", params={"id": playlog_id})
-        if not isinstance(raw, dict):
-            raise NotFoundError(f"Playlog not found: {playlog_id}")
-        mapped = map_recent_plays([raw], music_lookup=lookup)
-        if not mapped:
-            raise NotFoundError(f"Playlog not parseable: {playlog_id}")
-        return mapped[0]
-
-    return await cached_envelope(
-        cache, f"playlog|{playlog_id}", settings.cache_ttl_player_seconds, _load, response
-    )
-
-
-@router.get(
     "/v1/players/{username}/maimai/scores",
     response_model=ResponseEnvelope[list[RecentPlay]],
-    summary="Bulk score lookup for given musicIds",
+    summary="Пакетный запрос скоров по списку musicId",
 )
 async def user_music_from_list(
     username: str,
     response: Response,
-    musicIds: str = Query(..., description="comma-separated music ids"),
+    musicIds: str = Query(..., description="ID треков через запятую"),
     client: AquadxClient = Depends(get_client),
     lookup: dict[int, MusicMeta] = Depends(music_lookup),
     cache: Cache = Depends(get_cache),
@@ -75,13 +39,13 @@ async def user_music_from_list(
             ids.append(int(token))
         except ValueError:
             continue
-    ids_sorted = sorted(set(ids))  # canonicalise cache key so order/dupes share
+    ids_sorted = sorted(set(ids))  # каноничный ключ кэша: порядок и дубли не влияют
 
     async def _load() -> list[RecentPlay]:
-        # Upstream contract (Kotlin `userMusicFromList(@RP username, @RB musicList: List<Int>)`):
-        #   - username is a request param (query/form)
-        #   - musicList is the JSON BODY itself — a raw array of ints, NOT wrapped in an object.
-        # Sending `{"username":..., "musicList":[...]}` as the JSON body gets a 400.
+        # Контракт upstream (Kotlin `userMusicFromList(@RP username, @RB musicList: List<Int>)`):
+        #   - username идёт как request param (query/form);
+        #   - musicList — само JSON-тело: сырой массив int, НЕ обёрнутый в объект.
+        # Отправка `{"username":..., "musicList":[...]}` в теле вернёт 400.
         raw = await client.post(
             f"{MAI2_PREFIX}/user-music-from-list",
             params={"username": username},

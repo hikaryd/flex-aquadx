@@ -18,7 +18,7 @@ class Cache(Protocol):
     def backend(self) -> str: ...
 
 
-CacheState = tuple[Any, str]  # (value, x-cache header)
+CacheState = tuple[Any, str]  # (значение, заголовок x-cache)
 
 
 async def cached_call(
@@ -27,7 +27,7 @@ async def cached_call(
     ttl: int,
     loader: Callable[[], Awaitable[Any]],
 ) -> CacheState:
-    """Try cache; on miss call loader and store. Returns (value, x-cache header)."""
+    """Сходить в кэш; при промахе вызвать loader и сохранить. Возвращает (значение, x-cache)."""
     if cache.backend == "noop":
         value = await loader()
         return value, "BYPASS"
@@ -39,14 +39,14 @@ async def cached_call(
     return value, "MISS"
 
 
-async def cached_envelope(  # noqa: UP047  # keep TypeVar form for pydantic-generic interop
+async def cached_envelope(  # noqa: UP047  # форма с TypeVar нужна для pydantic-generic
     cache: Cache,
     key: str,
     ttl: int,
     loader: Callable[[], Awaitable[T]],
     response: Response,
 ) -> ResponseEnvelope[T]:
-    """Run the cached load, wire x-cache header, wrap in ResponseEnvelope."""
+    """Выполнить кэширующий вызов, выставить заголовок x-cache, обернуть в ResponseEnvelope."""
     value, state = await cached_call(cache, key, ttl, loader)
     response.headers["x-cache"] = state
     envelope: ResponseEnvelope[T] = ResponseEnvelope(data=value)

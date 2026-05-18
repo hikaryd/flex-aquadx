@@ -1,4 +1,4 @@
-"""Regression tests for architect feedback round 1."""
+"""Регрессионные тесты по фидбэку architect round 1."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ CARD = "/api/v2/card"
 
 
 def test_4xx_upstream_body_does_not_leak_into_envelope(client: TestClient) -> None:
-    """Upstream 4xx (non-404) bodies must not be propagated to API consumers."""
+    """Тело upstream 4xx (кроме 404) не должно пробрасываться потребителям API."""
     sensitive = {"internal_field": "secret", "stacktrace": "boom"}
     with respx.mock(assert_all_called=False) as r:
         r.get(BASE + f"{CARD}/user-games").mock(return_value=Response(400, json=sensitive))

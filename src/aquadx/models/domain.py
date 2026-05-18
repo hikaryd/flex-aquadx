@@ -1,9 +1,9 @@
-"""Domain DTOs exposed by our /v1/* API. Pydantic v2, immutable where reasonable."""
+"""Domain-DTO нашего /v1/* API. Pydantic v2, иммутабельные где имеет смысл."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, Generic, Literal, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -33,7 +33,7 @@ class Meta(BaseModel):
     source: str = "aquadx.net"
 
 
-class ResponseEnvelope(BaseModel, Generic[T]):  # noqa: UP046  # pydantic v2 generic models
+class ResponseEnvelope(BaseModel, Generic[T]):  # noqa: UP046  # форма generic для pydantic v2
     data: T
     meta: Meta = Field(default_factory=Meta)
 
@@ -44,8 +44,8 @@ class MusicMeta(BaseModel):
     artist: str | None = None
     genre: str | None = None
     bpm: float | None = None
-    jacket: str | None = None  # URL to /v1/assets/maimai/music/{id}/jacket
-    levels: list[float] = Field(default_factory=list)  # per-difficulty constants
+    jacket: str | None = None  # URL до /v1/assets/maimai/music/{id}/jacket
+    levels: list[float] = Field(default_factory=list)  # константы по уровням сложности
 
 
 class RankCount(BaseModel):
@@ -76,7 +76,7 @@ class MaimaiProfile(BaseModel):
 class RatedTrack(BaseModel):
     music: MusicMeta | None
     difficulty: Difficulty | str
-    achievement: float  # already normalised to % e.g. 101.5234
+    achievement: float  # уже нормализовано в проценты, напр. 101.5234
     rank: Rank | str
     deluxe_score: int | None = None
     rating_contribution: int | None = None
@@ -89,11 +89,11 @@ class RatingFrame(BaseModel):
 
 
 class RecentPlay(BaseModel):
-    # NB: `/recent` upstream does NOT expose a global database PK — its
-    # `playlogId` field is the in-session track number (1/2/3), so
-    # `playlog_id` here stays None for plays returned by `/recent`.
-    # It IS populated when fetched via `/v1/scores/{playlog_id}` against
-    # a known global PK.
+    # Внимание: upstream `/recent` НЕ отдаёт глобальный PK базы —
+    # его поле `playlogId` это внутрисессионный номер трека (1/2/3,
+    # его пробрасываем в `track_no`), поэтому для плейев из `/recent`
+    # это поле остаётся None. Оставлено в DTO на случай admin/write
+    # контекстов, где появится настоящий PK.
     playlog_id: int | None = None
     music: MusicMeta | None
     difficulty: Difficulty | str
@@ -107,8 +107,8 @@ class RecentPlay(BaseModel):
     play_date: str | None = None
     user_play_date: str | None = None
     after_rating: int | None = None
-    track_no: int | None = None  # 1/2/3 within a credit
-    place_name: str | None = None  # arcade venue display name
+    track_no: int | None = None  # 1/2/3 — номер трека внутри кредита
+    place_name: str | None = None  # имя аркадного аппарата
 
 
 class FavoriteEntry(BaseModel):
@@ -151,11 +151,3 @@ class RankingPage(BaseModel):
     size: int
     total: int
     entries: list[RankingEntry]
-
-
-class CardSummary(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    card_id: str | int | None = None
-    ext_id: int | None = None
-    access_time: str | None = None
-    raw: dict[str, Any] | None = None

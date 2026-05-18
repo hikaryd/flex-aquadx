@@ -73,8 +73,11 @@ select = [
 ]
 ignore = [
   "E501",
-  "B008",
-] # B008: FastAPI's Depends() pattern requires it in defaults
+  "B008",  # FastAPI Depends() требует значения по умолчанию
+  "RUF001",  # русские комментарии — кириллица рядом с ASCII легитимна
+  "RUF002",
+  "RUF003",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]

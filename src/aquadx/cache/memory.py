@@ -6,10 +6,11 @@ from typing import Any
 
 
 class TTLCache:
-    """Async-safe in-memory TTL cache. Per-key TTL.
+    """Async-безопасный in-memory TTL-кэш. TTL на каждый ключ.
 
-    Lightweight; not LRU-bounded — fine for the small key surface (usernames,
-    ranking pages). Use Redis backend if cardinality grows.
+    Лёгкий; без LRU-ограничения — подходит для небольшого пространства
+    ключей (имена игроков, страницы ранкинга). При росте кардинальности
+    подключайте Redis-backend.
     """
 
     backend = "memory"

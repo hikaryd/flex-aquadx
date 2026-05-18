@@ -1,4 +1,4 @@
-"""/v1/maimai/ranking — paginated leaderboard."""
+"""/v1/maimai/ranking — пагинированный лидерборд."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from aquadx.api.deps import get_cache, get_client
 from aquadx.api.errors import NotFoundError
 from aquadx.cache.base import Cache, cached_envelope
 from aquadx.clients.aquadx import AquadxClient
-from aquadx.mappers.maimai import _maybe_int
+from aquadx.mappers.maimai import maybe_int
 from aquadx.models.domain import RankingEntry, RankingPage, ResponseEnvelope
 from aquadx.settings import Settings, get_settings
 
@@ -22,10 +22,10 @@ MAI2_PREFIX = "/api/v2/game/mai2"
 def _to_entry(raw: dict[str, Any]) -> RankingEntry:
     accuracy = raw.get("accuracy")
     return RankingEntry(
-        rank=_maybe_int(raw.get("rank")) or 0,
+        rank=maybe_int(raw.get("rank")) or 0,
         username=str(raw.get("username") or ""),
         name=str(raw.get("name") or ""),
-        rating=_maybe_int(raw.get("rating")) or 0,
+        rating=maybe_int(raw.get("rating")) or 0,
         last_seen=raw.get("lastSeen") if isinstance(raw.get("lastSeen"), str) else None,
         accuracy=float(accuracy)
         if isinstance(accuracy, int | float) and not isinstance(accuracy, bool)
@@ -38,7 +38,7 @@ def _to_entry(raw: dict[str, Any]) -> RankingEntry:
 @router.get(
     "",
     response_model=ResponseEnvelope[RankingPage],
-    summary="Paginated maimai ranking",
+    summary="Пагинированный ранкинг maimai",
 )
 async def ranking(
     response: Response,
@@ -66,7 +66,7 @@ async def ranking(
 @router.get(
     "/{username}",
     response_model=ResponseEnvelope[RankingEntry],
-    summary="Single player's ranking",
+    summary="Позиция одного игрока в ранкинге",
 )
 async def ranking_by_username(
     username: str,

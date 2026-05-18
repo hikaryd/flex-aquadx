@@ -30,10 +30,11 @@ def _should_retry(exc: BaseException) -> bool:
 
 
 class AquadxClient:
-    """Async HTTP client around the AquaDX REST v2 API.
+    """Асинхронный HTTP-клиент к AquaDX REST v2 API.
 
-    Wraps httpx.AsyncClient with retries (3x exponential backoff on 5xx / connect)
-    and a token-bucket rate limiter to be polite to upstream.
+    Обёртка над httpx.AsyncClient с ретраями (3 попытки с экспоненциальным
+    бэкоффом на 5xx и ошибках соединения) и token-bucket rate-лимитером,
+    чтобы не давить upstream.
     """
 
     def __init__(
@@ -131,9 +132,9 @@ def _decode(response: httpx.Response, path: str) -> Any:
             upstream_status=404,
         )
     if 400 <= response.status_code < 500:
-        # Intentionally do NOT propagate the raw upstream body — it may contain
-        # internal field names or partial diagnostics we should not surface to
-        # API consumers. Log for ops, surface a sanitised message.
+        # Намеренно НЕ пробрасываем сырое тело upstream — оно может содержать
+        # внутренние имена полей или частичную диагностику, которую нельзя
+        # отдавать наружу. Пишем в лог для ops, наружу — санитизированное.
         log.warning(
             "upstream_4xx",
             method="GET",
