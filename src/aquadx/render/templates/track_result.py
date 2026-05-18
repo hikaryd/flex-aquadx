@@ -283,6 +283,92 @@ def _judgement_card(
     )
 
 
+# ──────────── editorial helpers ────────────
+
+
+def _rule(canvas: skia.Canvas, x1: float, y: float, x2: float, alpha: float = 0.10) -> None:
+    """Thin 1px горизонтальная editorial rule line."""
+    canvas.drawRect(
+        skia.Rect.MakeXYWH(x1, y, x2 - x1, 1),
+        skia.Paint(AntiAlias=True, Color4f=skia.Color4f(1, 1, 1, alpha)),
+    )
+
+
+def _v_rule(canvas: skia.Canvas, x: float, y1: float, y2: float, alpha: float = 0.08) -> None:
+    """Тонкая вертикальная rule line — column gutter."""
+    canvas.drawRect(
+        skia.Rect.MakeXYWH(x, y1, 1, y2 - y1),
+        skia.Paint(AntiAlias=True, Color4f=skia.Color4f(1, 1, 1, alpha)),
+    )
+
+
+def _eyebrow(canvas: skia.Canvas, s: str, x: float, y: float, *, size: float = 10.5) -> None:
+    """UPPERCASE 10pt лейбл с трекингом, цвет faint — editorial annotation."""
+    font = skia.Font(fonts.get("ui-bold"), size)
+    canvas.drawString(s.upper(), x, y, font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT))
+
+
+def _eyebrow_right(
+    canvas: skia.Canvas, s: str, right_x: float, y: float, size: float = 10.5
+) -> None:
+    font = skia.Font(fonts.get("ui-bold"), size)
+    w = font.measureText(s.upper())
+    canvas.drawString(
+        s.upper(), right_x - w, y, font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT)
+    )
+
+
+def _jacket_hard(
+    canvas: skia.Canvas, image: skia.Image | None, x: float, y: float, size: float
+) -> None:
+    """Hard-crop jacket — без радиуса, с тонкой 1px hint-обводкой."""
+    rect = skia.Rect.MakeXYWH(x, y, size, size)
+    if image is None:
+        canvas.drawRect(rect, skia.Paint(AntiAlias=True, Color4f=skia.Color4f(1, 1, 1, 0.04)))
+    else:
+        canvas.drawImageRect(image, rect, skia.SamplingOptions(skia.CubicResampler.Mitchell()))
+    canvas.drawRect(
+        rect,
+        skia.Paint(
+            AntiAlias=True,
+            Style=skia.Paint.kStroke_Style,
+            StrokeWidth=1.0,
+            Color4f=skia.Color4f(1, 1, 1, 0.10),
+        ),
+    )
+
+
+def _diff_sticker(canvas: skia.Canvas, x: float, y: float, diff: str, lv: float) -> float:
+    """Editorial-sticker: толстый цветной rect + текст внутри. Возвращает ширину."""
+    diff_color = DIFFICULTY_COLORS.get(diff, DIFFICULTY_COLORS["MASTER"])
+    diff_label = diff.replace("RE:MASTER", "RE:M")
+    title_font = skia.Font(fonts.get("display"), 20)
+    lv_font = skia.Font(fonts.get("mono-bold"), 14)
+    pad = 14.0
+    tw = title_font.measureText(diff_label) + 12 + lv_font.measureText(f"LV {lv:g}")
+    w = tw + pad * 2
+    h = 42.0
+    canvas.drawRect(
+        skia.Rect.MakeXYWH(x, y, w, h),
+        skia.Paint(AntiAlias=True, Color4f=diff_color),
+    )
+    canvas.drawString(
+        diff_label,
+        x + pad,
+        y + 28,
+        title_font,
+        skia.Paint(AntiAlias=True, Color4f=skia.Color4f(0.05, 0.02, 0.10, 1.0)),
+    )
+    canvas.drawString(
+        f"LV {lv:g}",
+        x + pad + title_font.measureText(diff_label) + 12,
+        y + 28,
+        lv_font,
+        skia.Paint(AntiAlias=True, Color4f=skia.Color4f(0.05, 0.02, 0.10, 0.85)),
+    )
+    return float(w)
+
+
 # ──────────── публичный API ────────────
 
 
@@ -292,142 +378,205 @@ def render(inp: TrackResultInput) -> bytes:
     with surface as canvas:
         _gradient_mesh(canvas)
 
-        # Верхняя плашка — заголовок трека.
-        _glass(canvas, skia.Rect.MakeXYWH(40, 36, 1300, 240))
-        _jacket(canvas, inp.jacket, 70, 66, 180)
+        # ════ Top eyebrow row + rule ════
+        _eyebrow(canvas, "TRACK RESULT  ·  MAIMAI DX", 60, 56)
+        _eyebrow_right(canvas, inp.play_date or "—", W - 60, 56)
+        _rule(canvas, 60, 76, W - 60)
 
-        title_x = 280.0
-        _text(canvas, inp.title, title_x, 110, 56, role="cjk-bold")
-        _text(canvas, inp.artist, title_x, 156, 28, color=C_TEXT_DIM, role="cjk")
-
-        diff_color = DIFFICULTY_COLORS.get(inp.difficulty, DIFFICULTY_COLORS["MASTER"])
-        w1 = _pill(canvas, title_x, 184, inp.difficulty, diff_color)
-        w2 = _pill(
-            canvas,
-            title_x + w1 + 12,
-            184,
-            f"LV {inp.level:g}",
-            skia.Color4f(0.20, 0.55, 1.0, 0.85),
+        # ════ Title + Artist + Difficulty sticker (left column, top) ════
+        title_y = 130
+        title_font_size = 44.0
+        # Если title очень длинный — обрежем по ширине 1100.
+        title_font = skia.Font(fonts.get("cjk-bold"), title_font_size)
+        title_w_max = 1180.0
+        title = inp.title
+        if title_font.measureText(title) > title_w_max:
+            ell = "…"
+            while title and title_font.measureText(title + ell) > title_w_max:
+                title = title[:-1]
+            title = title + ell
+        canvas.drawString(
+            title, 60, title_y, title_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI)
         )
+        _text(canvas, inp.artist, 60, title_y + 32, 22, color=C_TEXT_DIM, role="cjk")
+
+        # Difficulty sticker + chart_tag.
+        sticker_y = title_y + 64
+        sticker_w = _diff_sticker(canvas, 60, sticker_y, inp.difficulty, inp.level)
         _text(
             canvas,
             inp.chart_tag,
-            title_x + w1 + w2 + 36,
-            184 + 22 + 8 - 4,
-            22,
+            60 + sticker_w + 16,
+            sticker_y + 28,
+            16,
             color=C_ACH_A,
             role="ui-bold",
         )
 
-        # Правый столбец метрик.
-        right_x, right_w = 1380.0, 500.0
-        _glass(canvas, skia.Rect.MakeXYWH(right_x, 36, right_w, 96))
-        _text(canvas, "RATING", right_x + 28, 80, 22, color=C_TEXT_FAINT)
-        _text_right(
-            canvas,
-            f"{inp.rating}",
-            right_x + right_w - 28,
-            96,
-            48,
-            color=C_ACH_A,
-            role="display",
-        )
-
-        _glass(canvas, skia.Rect.MakeXYWH(right_x, 148, right_w, 88))
-        _text(canvas, "RANK", right_x + 28, 192, 22, color=C_TEXT_FAINT)
-        _text_right(
-            canvas,
-            inp.rank,
-            right_x + right_w - 28,
-            204,
-            36,
-            color=C_TEXT_HI,
-            role="display",
-        )
-
-        _glass(canvas, skia.Rect.MakeXYWH(right_x, 252, right_w, 122))
-        _text(canvas, "MAX COMBO", right_x + 28, 296, 22, color=C_TEXT_FAINT)
-        _text_right(
-            canvas,
-            f"{inp.max_combo}",
-            right_x + right_w - 28,
-            316,
-            44,
-            color=C_ACH_A,
-            role="display",
-        )
-        _text_right(
-            canvas,
-            f"FAST {inp.fast}  ·  LATE {inp.late}",
-            right_x + right_w - 28,
-            352,
-            22,
-            color=C_TEXT_FAINT,
-        )
-
-        _glass(canvas, skia.Rect.MakeXYWH(right_x, 388, right_w, 122))
-        _text(canvas, "でらっくスコア", right_x + 28, 432, 22, color=C_TEXT_FAINT, role="cjk")
-        _text_right(
-            canvas,
-            f"{inp.deluxe_score}",
-            right_x + right_w - 90,
-            452,
-            44,
-            color=skia.Color4f(0.70, 0.55, 1.0, 1.0),
-            role="display",
-        )
-        _text_right(
-            canvas,
-            f"/{inp.deluxe_max}",
-            right_x + right_w - 28,
-            452,
-            28,
-            color=C_TEXT_FAINT,
-            role="display",
-        )
-        sign = "+" if inp.rating_delta >= 0 else ""
-        _text_right(
-            canvas,
-            f"{sign}{inp.rating_delta} rating",
-            right_x + right_w - 28,
-            490,
-            22,
-            color=skia.Color4f(1.0, 0.80, 0.30, 1.0),
-        )
-
-        # Центральная плашка ACHIEVEMENT.
-        _glass(canvas, skia.Rect.MakeXYWH(40, 300, 1300, 440))
-        _text(canvas, "ACHIEVEMENT", 90, 354, 26, color=C_TEXT_DIM)
-        chip_w = _pill(
-            canvas, 600, 332, "TRACK RESULT", skia.Color4f(0.35, 0.18, 0.55, 0.95), size=22
-        )
-        _ = chip_w
-
+        # ════ Hero ACHIEVEMENT (left side, huge) ════
         ach_text = f"{inp.achievement:.4f}"
-        ach_w = _gradient_text(canvas, ach_text, 90, 590, 200)
-        _text(canvas, "%", 90 + ach_w + 10, 590, 88, color=C_ACH_A, role="display")
+        _eyebrow(canvas, "ACHIEVEMENT", 60, 320)
+        ach_font = skia.Font(fonts.get("display"), 240)
+        canvas.drawString(
+            ach_text,
+            56,
+            548,
+            ach_font,
+            skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
+        )
+        ach_w = float(ach_font.measureText(ach_text))
+        # «%» сразу за числом, мельче, в accent цвет.
+        pct_font = skia.Font(fonts.get("display"), 88)
+        canvas.drawString(
+            "%",
+            56 + ach_w + 8,
+            548,
+            pct_font,
+            skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
+        )
 
-        _rank_emblem(canvas, cx=1230, cy=520, label=inp.rank, radius=110)
+        # ════ Right top: Jacket + Rank label ════
+        jacket_size = 360.0
+        jacket_x = W - 60 - jacket_size
+        jacket_y = 110
+        _jacket_hard(canvas, inp.jacket, jacket_x, jacket_y, jacket_size)
 
-        # NOTE ACCURACY.
-        _glass(canvas, skia.Rect.MakeXYWH(40, 760, 900, 280))
-        _text(canvas, "NOTE ACCURACY", 78, 800, 22, color=C_TEXT_FAINT)
-        for i, (lbl, frac, val) in enumerate(inp.note_accuracy):
-            yy = 836 + i * 40
-            _text(canvas, lbl, 78, yy + 22, 20, color=C_TEXT_DIM)
-            _bar(canvas, 200, yy + 6, 600, 20, frac)
-            _text_right(canvas, str(val), 880, yy + 24, 22, color=C_TEXT_HI, role="mono-bold")
+        # «Rank» eyebrow + большой текст RANK слева от jacket — typography как герой.
+        rank_x_right = jacket_x - 32
+        _eyebrow_right(canvas, "RANK", rank_x_right, jacket_y + 30)
+        rank_font = skia.Font(fonts.get("display"), 96)
+        rank_w = rank_font.measureText(inp.rank)
+        canvas.drawString(
+            inp.rank,
+            rank_x_right - rank_w,
+            jacket_y + 130,
+            rank_font,
+            skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
+        )
+        # under rank: «+12 RATING» дельта.
+        if inp.rating_delta != 0:
+            sign = "+" if inp.rating_delta > 0 else ""
+            delta_str = f"{sign}{inp.rating_delta} RATING"
+            delta_font = skia.Font(fonts.get("mono-bold"), 18)
+            dw = delta_font.measureText(delta_str)
+            canvas.drawString(
+                delta_str,
+                rank_x_right - dw,
+                jacket_y + 170,
+                delta_font,
+                skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
+            )
 
-        # JUDGEMENTS.
-        _glass(canvas, skia.Rect.MakeXYWH(960, 760, 920, 280))
-        _text(canvas, "JUDGEMENTS", 998, 800, 22, color=C_TEXT_FAINT)
+        # ════ Middle rule + section header ════
+        section_y = 620
+        _rule(canvas, 60, section_y, W - 60)
+        _eyebrow(canvas, "JUDGEMENTS", 60, section_y + 26)
+        _eyebrow_right(canvas, "BREAKDOWN", W - 60, section_y + 26)
+
+        # ════ Judgements: 5 cells horizontal table with v-rules ════
+        cells_y = section_y + 56
+        cells_h = 110.0
+        cell_count = max(len(inp.judgements), 1)
+        cell_w = (W - 120) / cell_count
+        total = sum(v for _, v in inp.judgements) or 1
         for i, (lbl, val) in enumerate(inp.judgements):
-            color = JUDGEMENT_COLORS.get(lbl, skia.Color4f(0.6, 0.6, 0.7, 1.0))
-            _judgement_card(canvas, 990 + i * 178, 836, lbl, val, color)
+            cx = 60 + i * cell_w
+            color = JUDGEMENT_COLORS.get(lbl, C_TEXT_FAINT)
+            # Vertical rule между ячейками (кроме первой).
+            if i > 0:
+                _v_rule(canvas, cx, cells_y, cells_y + cells_h, alpha=0.08)
+            # Eyebrow label.
+            _eyebrow(canvas, lbl, cx + 16, cells_y + 22)
+            # Big value.
+            val_font = skia.Font(fonts.get("display"), 56)
+            canvas.drawString(
+                str(val),
+                cx + 16,
+                cells_y + 80,
+                val_font,
+                skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
+            )
+            # Percentage right of value.
+            pct = (val / total) * 100
+            pct_font = skia.Font(fonts.get("mono"), 12)
+            canvas.drawString(
+                f"{pct:.1f}%",
+                cx + 16,
+                cells_y + 100,
+                pct_font,
+                skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
+            )
+            # 2px accent indicator на цвет judgement — слева от ячейки.
+            canvas.drawRect(
+                skia.Rect.MakeXYWH(cx + 16, cells_y + 12, 28, 2),
+                skia.Paint(AntiAlias=True, Color4f=color),
+            )
 
-        # Watermark.
-        _text(canvas, inp.play_date, 60, 1058, 20, color=C_TEXT_FAINT, role="mono")
-        _text_right(canvas, inp.brand, 1860, 1058, 22, color=C_ACH_A, role="ui-bold")
+        # ════ Bottom section: NOTE ACCURACY (left) + STATS (right) ════
+        bot_y = cells_y + cells_h + 36
+        _rule(canvas, 60, bot_y, W - 60)
+        _eyebrow(canvas, "NOTE ACCURACY", 60, bot_y + 26)
+        _eyebrow(canvas, "STATS", 1180, bot_y + 26)
+
+        notes_y = bot_y + 50
+        # NOTE ACCURACY: компактная таблица label | mini-bar | value.
+        for i, (lbl, frac, val) in enumerate(inp.note_accuracy):
+            ny = notes_y + i * 30
+            canvas.drawString(
+                lbl,
+                60,
+                ny + 14,
+                skia.Font(fonts.get("mono"), 13),
+                skia.Paint(AntiAlias=True, Color4f=C_TEXT_DIM),
+            )
+            # mini bar 280px.
+            bar_x, bar_w, bar_h = 160, 600, 5
+            canvas.drawRect(
+                skia.Rect.MakeXYWH(bar_x, ny + 8, bar_w, bar_h),
+                skia.Paint(AntiAlias=True, Color4f=skia.Color4f(1, 1, 1, 0.06)),
+            )
+            canvas.drawRect(
+                skia.Rect.MakeXYWH(bar_x, ny + 8, max(0.0, min(1.0, frac)) * bar_w, bar_h),
+                skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
+            )
+            _text_right(canvas, str(val), 60 + 800, ny + 16, 14, color=C_TEXT_HI, role="mono-bold")
+
+        # STATS: справа — три блока в линию.
+        stats_x = 1180
+        stats_top_y = bot_y + 56
+        stats = (
+            ("RATING", f"{inp.rating}", C_ACH_A),
+            ("MAX COMBO", f"{inp.max_combo}", C_TEXT_HI),
+            ("DELUXE", f"{inp.deluxe_score}/{inp.deluxe_max}", C_TEXT_HI),
+        )
+        for i, (stat_lbl, stat_val, stat_col) in enumerate(stats):
+            sy = stats_top_y + i * 60
+            _eyebrow(canvas, stat_lbl, stats_x, sy)
+            val_font = skia.Font(fonts.get("mono-bold"), 32)
+            canvas.drawString(
+                stat_val,
+                stats_x,
+                sy + 36,
+                val_font,
+                skia.Paint(AntiAlias=True, Color4f=stat_col),
+            )
+
+        # FAST/LATE компактный hint справа от STATS.
+        fl_x = 1620
+        _eyebrow(canvas, "FAST / LATE", fl_x, stats_top_y)
+        fl_font = skia.Font(fonts.get("mono-bold"), 28)
+        canvas.drawString(
+            f"{inp.fast} · {inp.late}",
+            fl_x,
+            stats_top_y + 36,
+            fl_font,
+            skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
+        )
+
+        # ════ Footer rule + brand ════
+        _rule(canvas, 60, H - 50, W - 60)
+        _eyebrow(canvas, inp.brand, 60, H - 28)
+        _eyebrow_right(canvas, f"#{inp.rating}  RATING", W - 60, H - 28)
 
     image = surface.makeImageSnapshot()
     return bytes(image.encodeToData(skia.kPNG, 95))

@@ -238,24 +238,34 @@ def _draw_card_b35(
     title = _ellipsized(title_font, item.title or f"#{item.music_id}", inner_w - 8)
     canvas.drawString(title, tx, y + 44, title_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI))
 
-    # Achievement — крупно (mono), белый.
-    ach_font = skia.Font(fonts.get("mono-bold"), 20)
+    # Achievement — крупно (mono), белый. Уменьшен до 17pt — даёт место contrib.
+    ach_font = skia.Font(fonts.get("mono-bold"), 17)
     canvas.drawString(
         f"{item.achievement:.4f}%",
         tx,
-        y + 72,
+        y + 70,
         ach_font,
         skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
     )
 
-    # Contribution — bottom-right, акцентный.
-    contrib_font = skia.Font(fonts.get("mono-bold"), 14)
-    contrib = f"→ {item.rating_contribution}"
+    # Contribution — bottom-right, акцентный, без стрелки.
+    contrib_font = skia.Font(fonts.get("mono-bold"), 13)
+    contrib = f"{item.rating_contribution}"
     cw = contrib_font.measureText(contrib)
+    # Маленький eyebrow «RT» над числом.
+    eyebrow_font = skia.Font(fonts.get("ui-bold"), 8.5)
+    ew = eyebrow_font.measureText("RT")
+    canvas.drawString(
+        "RT",
+        x + CARD_W_B35 - cw - 12 + (cw - ew) / 2,
+        y + 56,
+        eyebrow_font,
+        skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
+    )
     canvas.drawString(
         contrib,
         x + CARD_W_B35 - cw - 12,
-        y + 72,
+        y + 70,
         contrib_font,
         skia.Paint(AntiAlias=True, Color4f=C_ACCENT),
     )
@@ -338,10 +348,19 @@ def _draw_card_b15(
         skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
     )
 
-    # Contribution — справа крупно, акцентный.
+    # Contribution — справа крупно, без префикса +.
     contrib_font = skia.Font(fonts.get("mono-bold"), 16)
-    contrib = f"+{item.rating_contribution}"
+    contrib = f"{item.rating_contribution}"
     cw = contrib_font.measureText(contrib)
+    eyebrow_font = skia.Font(fonts.get("ui-bold"), 9)
+    ew = eyebrow_font.measureText("RT")
+    canvas.drawString(
+        "RT",
+        x + CARD_W_B15 - cw - 12 + (cw - ew) / 2,
+        y + 44,
+        eyebrow_font,
+        skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
+    )
     canvas.drawString(
         contrib,
         x + CARD_W_B15 - cw - 12,
@@ -399,17 +418,26 @@ def render(inp: RatingFrameInput) -> bytes:
             skia.Paint(AntiAlias=True, Color4f=C_DIVIDER),
         )
 
-        # Right: B35 / B15 / TOTAL — небольшие блочки в линию.
+        # Right: полезные метрики — AVG ACH / SSS+ count / TOP LV.
+        all_items = list(inp.b35) + list(inp.b15)
+        n = max(len(all_items), 1)
+        avg_ach = sum(it.achievement for it in all_items) / n
+        sss_plus = sum(1 for it in all_items if it.rank == "SSS+")
+        top_lv = max((it.level for it in all_items), default=0.0)
+
         stats_x = divider_x + 36
         stat_gap = 200
-        for i, (label, val) in enumerate(
-            (("B35", inp.b35_sum), ("B15", inp.b15_sum), ("TOTAL", inp.b35_sum + inp.b15_sum))
-        ):
+        stats = (
+            ("AVG ACH", f"{avg_ach:.3f}%"),
+            ("SSS+", str(sss_plus)),
+            ("TOP LV", f"{top_lv:g}"),
+        )
+        for i, (label, val) in enumerate(stats):
             sx = stats_x + i * stat_gap
             _label(canvas, label, sx, hero_y + 32)
             val_font = skia.Font(fonts.get("mono-bold"), 36)
             canvas.drawString(
-                f"{val}",
+                val,
                 sx,
                 hero_y + 78,
                 val_font,
