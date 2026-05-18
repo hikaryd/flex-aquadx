@@ -34,6 +34,58 @@ make verify       # ruff + mypy + pytest --cov-fail-under=80
 make compose-up
 ```
 
+## Особенности upstream API (важно для потребителей)
+
+### `playlog_id` / `track_no` — не путать
+
+В AquaDX `/api/v2/game/mai2/recent` поле `playlogId` — это **в‑сессионный номер трека (1/2/3)**, а не глобальный PK. У одного игрока все 2777 записей могут иметь `playlogId=1`. Глобального PK в JSON-ответе `/recent` нет.
+
+В нашем `/v1/players/{u}/maimai/recent` это поле перемаплено корректно:
+
+| Поле в нашем DTO | Что значит |
+|---|---|
+| `playlog_id` | глобальный PK для `/v1/scores/{id}`. **В ответе `/recent` всегда `null`** — upstream его не отдаёт |
+| `track_no` | 1/2/3 — номер трека внутри кредита (бывший `playlogId` / `trackNo`) |
+| `place_name` | имя аркадного аппарата (`placeName`) |
+| `user_play_date` | точное локальное время прохождения |
+| `play_date` | дата (YYYY‑MM‑DD) |
+
+### Как идентифицировать конкретный заход
+
+Поскольку глобальный PK из `/recent` недоступен, **уникальный составной ключ** — это `(music.id, difficulty, user_play_date)`. Этого достаточно для адресации записи в истории конкретного игрока:
+
+```
+GET /v1/players/Sigma/maimai/recent?limit=200
+→ ищем запись где music.id = 11663 AND difficulty = "RE:MASTER"
+                      AND user_play_date = "2025-05-14 01:19:30"
+```
+
+### `/v1/scores/{playlog_id}` — ограниченная применимость
+
+Эндпоинт работает: проксирует upstream `/api/v2/game/mai2/playlog?id=X` по глобальному PK. Но **получить этот PK из публичного `/recent` нельзя** — он доступен только из админ/бот контекста (прямой доступ к БД upstream). Для истории игрока используй `/v1/players/{u}/maimai/recent` напрямую.
+
+### Wire-формат `user-music-from-list`
+
+Upstream Spring-контроллер: `userMusicFromList(@RP username, @RB musicList: List<Int>)`. Это значит:
+- `username` идёт как **request param** (query/form)
+- `musicList` — **сырой JSON-массив тела** (`[1,2,3]`), не объект `{"musicList":[...]}`
+
+Наш клиент шлёт правильный формат автоматически — но имейте в виду, если будете писать свой клиент против upstream.
+
+### Поле `achievement` в upstream
+
+Хранится умноженным на `10000` (так `1015234` = `101.5234%`). Наш слой нормализует — клиент получает уже `float` в процентах.
+
+### `best35` / `best15` — 4‑элементный формат
+
+Upstream шлёт `[musicId, level, ratingContribution, achievement]` — четыре элемента, не три. Поле `rating_contribution` в нашем DTO экспонирует вклад трека в общий рейтинг.
+
+### Music meta JSON — отдельный CDN-путь
+
+- Корректный путь: `https://aquadx.net/d/mai2/00/all-music.json` (game code `mai2`, **не** `maimai`)
+- Asset URL pattern: `${DATA_HOST}/d/mai2/music/00{pad(id,6).substring(2)}.png`
+- Эти пути отличаются от устаревших `dxnet.misakimoe.com` — для свежего инстанса используем `aquadx.net`
+
 ## Конфигурация (env)
 
 | ENV | Default | Описание |
