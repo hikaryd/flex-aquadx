@@ -453,8 +453,10 @@ def render(inp: TrackResultInput) -> bytes:
             rank_font,
             skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
         )
-        # under rank: «+12 RATING» дельта.
-        if inp.rating_delta != 0:
+        # under rank: «+N RATING» дельта. Показываем только при разумной дельте.
+        # upstream `/recent` иногда отдаёт after_rating как in-session, не профиль —
+        # тогда delta = after_rating - profile_rating уходит в большой минус (артефакт).
+        if 0 < abs(inp.rating_delta) < 500:
             sign = "+" if inp.rating_delta > 0 else ""
             delta_str = f"{sign}{inp.rating_delta} RATING"
             delta_font = skia.Font(fonts.get("mono-bold"), 18)
@@ -473,43 +475,55 @@ def render(inp: TrackResultInput) -> bytes:
         _eyebrow(canvas, "JUDGEMENTS", 60, section_y + 26)
         _eyebrow_right(canvas, "BREAKDOWN", W - 60, section_y + 26)
 
-        # ════ Judgements: 5 cells horizontal table with v-rules ════
+        # ════ Judgements: 5 cells horizontal table ════
+        # 2px accent indicator — НАД лейблом (не за ним). Eyebrow ниже.
+        total = sum(v for _, v in inp.judgements)
         cells_y = section_y + 56
         cells_h = 110.0
-        cell_count = max(len(inp.judgements), 1)
-        cell_w = (W - 120) / cell_count
-        total = sum(v for _, v in inp.judgements) or 1
-        for i, (lbl, val) in enumerate(inp.judgements):
-            cx = 60 + i * cell_w
-            color = JUDGEMENT_COLORS.get(lbl, C_TEXT_FAINT)
-            # Vertical rule между ячейками (кроме первой).
-            if i > 0:
-                _v_rule(canvas, cx, cells_y, cells_y + cells_h, alpha=0.08)
-            # Eyebrow label.
-            _eyebrow(canvas, lbl, cx + 16, cells_y + 22)
-            # Big value.
-            val_font = skia.Font(fonts.get("display"), 56)
+        if total > 0:
+            cell_count = max(len(inp.judgements), 1)
+            cell_w = (W - 120) / cell_count
+            for i, (lbl, val) in enumerate(inp.judgements):
+                cx = 60 + i * cell_w
+                color = JUDGEMENT_COLORS.get(lbl, C_TEXT_FAINT)
+                if i > 0:
+                    _v_rule(canvas, cx, cells_y, cells_y + cells_h, alpha=0.08)
+                # 2px accent indicator вверху ячейки (над лейблом, не за ним).
+                canvas.drawRect(
+                    skia.Rect.MakeXYWH(cx + 16, cells_y + 4, 28, 2),
+                    skia.Paint(AntiAlias=True, Color4f=color),
+                )
+                # Eyebrow label чуть ниже indicator.
+                _eyebrow(canvas, lbl, cx + 16, cells_y + 26)
+                # Big value.
+                val_font = skia.Font(fonts.get("display"), 52)
+                canvas.drawString(
+                    str(val),
+                    cx + 16,
+                    cells_y + 78,
+                    val_font,
+                    skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
+                )
+                # Percentage под value.
+                pct = (val / total) * 100
+                pct_font = skia.Font(fonts.get("mono"), 12)
+                canvas.drawString(
+                    f"{pct:.1f}%",
+                    cx + 16,
+                    cells_y + 98,
+                    pct_font,
+                    skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
+                )
+        else:
+            # Нет judgement-данных — editorial placeholder вместо нулевых столбцов.
+            placeholder_font = skia.Font(fonts.get("mono"), 14)
+            placeholder = "/recent НЕ ОТДАЁТ JUDGEMENT-ДАННЫЕ  ·  ЗАПРОСИ /playlog?id=N"
             canvas.drawString(
-                str(val),
-                cx + 16,
-                cells_y + 80,
-                val_font,
-                skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
-            )
-            # Percentage right of value.
-            pct = (val / total) * 100
-            pct_font = skia.Font(fonts.get("mono"), 12)
-            canvas.drawString(
-                f"{pct:.1f}%",
-                cx + 16,
-                cells_y + 100,
-                pct_font,
+                placeholder,
+                60,
+                cells_y + 60,
+                placeholder_font,
                 skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
-            )
-            # 2px accent indicator на цвет judgement — слева от ячейки.
-            canvas.drawRect(
-                skia.Rect.MakeXYWH(cx + 16, cells_y + 12, 28, 2),
-                skia.Paint(AntiAlias=True, Color4f=color),
             )
 
         # ════ Bottom section: NOTE ACCURACY (left) + STATS (right) ════
@@ -519,27 +533,38 @@ def render(inp: TrackResultInput) -> bytes:
         _eyebrow(canvas, "STATS", 1180, bot_y + 26)
 
         notes_y = bot_y + 50
-        # NOTE ACCURACY: компактная таблица label | mini-bar | value.
-        for i, (lbl, frac, val) in enumerate(inp.note_accuracy):
-            ny = notes_y + i * 30
+        has_accuracy = any(val > 0 for _, _, val in inp.note_accuracy)
+        if has_accuracy:
+            for i, (lbl, frac, val) in enumerate(inp.note_accuracy):
+                ny = notes_y + i * 30
+                canvas.drawString(
+                    lbl,
+                    60,
+                    ny + 14,
+                    skia.Font(fonts.get("mono"), 13),
+                    skia.Paint(AntiAlias=True, Color4f=C_TEXT_DIM),
+                )
+                bar_x, bar_w, bar_h = 160, 600, 5
+                canvas.drawRect(
+                    skia.Rect.MakeXYWH(bar_x, ny + 8, bar_w, bar_h),
+                    skia.Paint(AntiAlias=True, Color4f=skia.Color4f(1, 1, 1, 0.06)),
+                )
+                canvas.drawRect(
+                    skia.Rect.MakeXYWH(bar_x, ny + 8, max(0.0, min(1.0, frac)) * bar_w, bar_h),
+                    skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
+                )
+                _text_right(
+                    canvas, str(val), 60 + 800, ny + 16, 14, color=C_TEXT_HI, role="mono-bold"
+                )
+        else:
+            placeholder_font = skia.Font(fonts.get("mono"), 13)
             canvas.drawString(
-                lbl,
+                "ДАННЫЕ В /playlog?id=N",
                 60,
-                ny + 14,
-                skia.Font(fonts.get("mono"), 13),
-                skia.Paint(AntiAlias=True, Color4f=C_TEXT_DIM),
+                notes_y + 22,
+                placeholder_font,
+                skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
             )
-            # mini bar 280px.
-            bar_x, bar_w, bar_h = 160, 600, 5
-            canvas.drawRect(
-                skia.Rect.MakeXYWH(bar_x, ny + 8, bar_w, bar_h),
-                skia.Paint(AntiAlias=True, Color4f=skia.Color4f(1, 1, 1, 0.06)),
-            )
-            canvas.drawRect(
-                skia.Rect.MakeXYWH(bar_x, ny + 8, max(0.0, min(1.0, frac)) * bar_w, bar_h),
-                skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
-            )
-            _text_right(canvas, str(val), 60 + 800, ny + 16, 14, color=C_TEXT_HI, role="mono-bold")
 
         # STATS: справа — три блока в линию.
         stats_x = 1180
@@ -561,17 +586,18 @@ def render(inp: TrackResultInput) -> bytes:
                 skia.Paint(AntiAlias=True, Color4f=stat_col),
             )
 
-        # FAST/LATE компактный hint справа от STATS.
-        fl_x = 1620
-        _eyebrow(canvas, "FAST / LATE", fl_x, stats_top_y)
-        fl_font = skia.Font(fonts.get("mono-bold"), 28)
-        canvas.drawString(
-            f"{inp.fast} · {inp.late}",
-            fl_x,
-            stats_top_y + 36,
-            fl_font,
-            skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
-        )
+        # FAST/LATE компактный hint справа от STATS — только если есть данные.
+        if inp.fast > 0 or inp.late > 0:
+            fl_x = 1620
+            _eyebrow(canvas, "FAST / LATE", fl_x, stats_top_y)
+            fl_font = skia.Font(fonts.get("mono-bold"), 28)
+            canvas.drawString(
+                f"{inp.fast} · {inp.late}",
+                fl_x,
+                stats_top_y + 36,
+                fl_font,
+                skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
+            )
 
         # ════ Footer rule + brand ════
         _rule(canvas, 60, H - 50, W - 60)

@@ -248,20 +248,10 @@ def _draw_card_b35(
         skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
     )
 
-    # Contribution — bottom-right, акцентный, без стрелки.
-    contrib_font = skia.Font(fonts.get("mono-bold"), 13)
+    # Contribution — bottom-right, акцентный, крупный.
+    contrib_font = skia.Font(fonts.get("mono-bold"), 16)
     contrib = f"{item.rating_contribution}"
     cw = contrib_font.measureText(contrib)
-    # Маленький eyebrow «RT» над числом.
-    eyebrow_font = skia.Font(fonts.get("ui-bold"), 8.5)
-    ew = eyebrow_font.measureText("RT")
-    canvas.drawString(
-        "RT",
-        x + CARD_W_B35 - cw - 12 + (cw - ew) / 2,
-        y + 56,
-        eyebrow_font,
-        skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
-    )
     canvas.drawString(
         contrib,
         x + CARD_W_B35 - cw - 12,
@@ -270,13 +260,13 @@ def _draw_card_b35(
         skia.Paint(AntiAlias=True, Color4f=C_ACCENT),
     )
 
-    # Index — справа от title, мелкий, faint.
-    idx_font = skia.Font(fonts.get("mono"), 10)
+    # Index — bottom-right самый край, мелкий, faint, под contribution.
+    idx_font = skia.Font(fonts.get("mono"), 9.5)
     idx_text = f"#{idx:02d}"
     canvas.drawString(
         idx_text,
         x + CARD_W_B35 - idx_font.measureText(idx_text) - 12,
-        y + 42,
+        y + CARD_H_B35 - 6,
         idx_font,
         skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
     )
@@ -338,35 +328,27 @@ def _draw_card_b15(
         canvas, item.rank, x + CARD_W_B15 - 24, y + 22, 11, color=rank_color, role="ui-bold"
     )
 
+    # Contribution — справа крупно, акцентный, без RT eyebrow.
+    contrib_font = skia.Font(fonts.get("mono-bold"), 18)
+    contrib = f"{item.rating_contribution}"
+    cw = contrib_font.measureText(contrib)
+    canvas.drawString(
+        contrib,
+        x + CARD_W_B15 - cw - 12,
+        y + 50,
+        contrib_font,
+        skia.Paint(AntiAlias=True, Color4f=C_ACCENT),
+    )
+
+    # Index — bottom-right.
     idx_font = skia.Font(fonts.get("mono"), 10)
     idx_text = f"#{idx:02d}"
     canvas.drawString(
         idx_text,
         x + CARD_W_B15 - idx_font.measureText(idx_text) - 12,
-        y + 38,
+        y + CARD_H_B15 - 8,
         idx_font,
         skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
-    )
-
-    # Contribution — справа крупно, без префикса +.
-    contrib_font = skia.Font(fonts.get("mono-bold"), 16)
-    contrib = f"{item.rating_contribution}"
-    cw = contrib_font.measureText(contrib)
-    eyebrow_font = skia.Font(fonts.get("ui-bold"), 9)
-    ew = eyebrow_font.measureText("RT")
-    canvas.drawString(
-        "RT",
-        x + CARD_W_B15 - cw - 12 + (cw - ew) / 2,
-        y + 44,
-        eyebrow_font,
-        skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
-    )
-    canvas.drawString(
-        contrib,
-        x + CARD_W_B15 - cw - 12,
-        y + 62,
-        contrib_font,
-        skia.Paint(AntiAlias=True, Color4f=C_ACCENT),
     )
 
 

@@ -155,10 +155,43 @@ def sample_rating() -> RatingFrameInput:
     )
 
 
+def sample_track_no_data() -> TrackResultInput:
+    """Сценарий: upstream /recent не отдаёт judgement/accuracy/fast-late."""
+    s = sample_track()
+    return TrackResultInput(
+        title=s.title,
+        artist=s.artist,
+        difficulty=s.difficulty,
+        level=s.level,
+        chart_tag=s.chart_tag,
+        achievement=s.achievement,
+        rank=s.rank,
+        rating=s.rating,
+        max_combo=s.max_combo,
+        fast=0,
+        late=0,
+        deluxe_score=s.deluxe_score,
+        deluxe_max=s.deluxe_max,
+        rating_delta=0,
+        judgements=[("CRIT", 0), ("PERFECT", 0), ("GREAT", 0), ("GOOD", 0), ("MISS", 0)],
+        note_accuracy=[
+            ("TAP", 1.0, 0),
+            ("HOLD", 1.0, 0),
+            ("SLIDE", 1.0, 0),
+            ("TOUCH", 1.0, 0),
+            ("BREAK", 1.0, 0),
+        ],
+        play_date=s.play_date,
+    )
+
+
 if __name__ == "__main__":
     t = ROOT / "poc_track.png"
     r = ROOT / "poc_rating.png"
+    t2 = ROOT / "poc_track_nodata.png"
     t.write_bytes(render_track(sample_track()))
     print(f"OK: {t} ({t.stat().st_size // 1024}KB)")
+    t2.write_bytes(render_track(sample_track_no_data()))
+    print(f"OK: {t2} ({t2.stat().st_size // 1024}KB)")
     r.write_bytes(render_rating(sample_rating()))
     print(f"OK: {r} ({r.stat().st_size // 1024}KB)")
