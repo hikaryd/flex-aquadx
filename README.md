@@ -1,4 +1,4 @@
-# aquadx-python
+# flex-aquadx
 
 Чистый асинхронный Python-микросервис-обёртка над [AquaDX REST v2 API](https://github.com/MewoLab/AquaDX). Даёт удобный, версионированный публичный контракт (`/v1/*`), типизированные DTO, нормализацию данных (achievement → %, inline music meta), кэширование и резолвинг ассетов maimai (jacket, items).
 
@@ -38,14 +38,13 @@ make compose-up
 
 | ENV | Default | Описание |
 |---|---|---|
-| `AQUADX_BASE_URL` | `https://aquadx.net` | upstream |
-| `AQUADX_DATA_HOST` | `https://dxnet.misakimoe.com` | CDN ассетов |
+| `AQUADX_BASE_URL` | `https://aquadx.net/aqua` | upstream API |
+| `AQUADX_DATA_HOST` | `https://aquadx.net` | CDN ассетов |
 | `ASSETS_MODE` | `redirect` | `redirect` или `proxy` |
 | `CACHE_BACKEND` | `memory` | `memory` / `redis` / `noop` |
 | `HTTP_TIMEOUT_S` | `10` | таймаут upstream |
 | `HTTP_RPS` | `5` | rate-limit к upstream |
-| `API_KEY` | пусто | если задан — требуется хидер `X-API-Key` |
-| `LOG_LEVEL` | `INFO` | |
+| `LOG_LEVEL` | `INFO` | уровень логирования |
 
 ## Лицензия и условия использования (важно)
 
@@ -61,19 +60,16 @@ make compose-up
 
 ```
 src/aquadx/
-├── main.py              # FastAPI app factory
-├── settings.py          # env-driven config
-├── api/                 # роутеры
-├── clients/             # AquadxClient (httpx)
-├── models/              # upstream + domain pydantic
-├── mappers/             # нормализация + enrichment
-├── meta/                # загрузчик music.json
-├── cache/               # in-memory / redis / noop
-└── utils/
-tests/
-├── unit/
-├── integration/
-└── fixtures/
+├── main.py              # фабрика FastAPI-приложения
+├── settings.py          # конфиг из env
+├── api/                 # роутеры (/v1/players, /v1/maimai/ranking, /v1/scores, /v1/cards, /v1/assets)
+├── clients/             # AquadxClient (httpx + retry + rate-limit)
+├── models/              # domain DTO (pydantic v2)
+├── mappers/             # нормализация полей и enrichment music meta
+├── meta/                # загрузчик music.json (TTL 24h)
+├── cache/               # memory / noop (redis — wiring-point)
+└── utils/               # logging, ratelimit
+tests/                   # unit + integration с respx
 ```
 
 ## Тестирование
@@ -81,10 +77,4 @@ tests/
 ```bash
 make test                # быстрый pytest
 make verify              # ruff + mypy + pytest с coverage gate 80%
-```
-
-Контрактные golden-фикстуры лежат в `tests/fixtures/upstream/`. Обновление вручную при минорах upstream:
-
-```bash
-make refresh-fixtures    # (после M2)
 ```

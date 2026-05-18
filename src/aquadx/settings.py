@@ -15,8 +15,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    service_name: str = "aquadx-python"
-    # Defaults match the public AquaNet instance — see AquaNet/.env in upstream.
+    service_name: str = "flex-aquadx"
+    # Дефолты соответствуют публичному инстансу AquaNet — см. AquaNet/.env в upstream.
     aquadx_base_url: str = "https://aquadx.net/aqua"
     aquadx_data_host: str = "https://aquadx.net"
     aquadx_data_host_fallback: str | None = None
@@ -32,7 +32,6 @@ class Settings(BaseSettings):
     http_timeout_s: float = 10.0
     http_rps: float = 5.0
 
-    api_key: str | None = None
     log_level: str = "INFO"
 
 

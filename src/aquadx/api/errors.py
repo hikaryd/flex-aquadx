@@ -46,16 +46,6 @@ class UpstreamTimeoutError(UpstreamError):
     status_code = 504
 
 
-class RateLimitedError(AquadxError):
-    code = "RATE_LIMITED"
-    status_code = 429
-
-
-class UnauthorizedError(AquadxError):
-    code = "UNAUTHORIZED"
-    status_code = 401
-
-
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AquadxError)
     async def aquadx_error_handler(_: Request, exc: AquadxError) -> JSONResponse:

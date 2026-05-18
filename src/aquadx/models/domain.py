@@ -89,6 +89,11 @@ class RatingFrame(BaseModel):
 
 
 class RecentPlay(BaseModel):
+    # NB: `/recent` upstream does NOT expose a global database PK — its
+    # `playlogId` field is the in-session track number (1/2/3), so
+    # `playlog_id` here stays None for plays returned by `/recent`.
+    # It IS populated when fetched via `/v1/scores/{playlog_id}` against
+    # a known global PK.
     playlog_id: int | None = None
     music: MusicMeta | None
     difficulty: Difficulty | str
@@ -100,7 +105,10 @@ class RecentPlay(BaseModel):
     is_new_record: bool | None = None
     max_combo: int | None = None
     play_date: str | None = None
+    user_play_date: str | None = None
     after_rating: int | None = None
+    track_no: int | None = None  # 1/2/3 within a credit
+    place_name: str | None = None  # arcade venue display name
 
 
 class FavoriteEntry(BaseModel):

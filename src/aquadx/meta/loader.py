@@ -57,9 +57,6 @@ class MusicMetaLoader:
             return False
         return (time.monotonic() - self._last_attempt_at) < self.NEGATIVE_BACKOFF_S
 
-    def assets_base(self) -> str:
-        return self.settings.aquadx_data_host
-
     async def load(self, *, force: bool = False, http: httpx.AsyncClient | None = None) -> int:
         if not force and self._is_fresh():
             return len(self._cache)
@@ -83,7 +80,7 @@ class MusicMetaLoader:
             finally:
                 if owns:
                     await client.aclose()
-            self._cache = _parse_meta(raw, self.assets_base())
+            self._cache = _parse_meta(raw, self.settings.aquadx_data_host)
             self._loaded_at = time.monotonic()
             log.info("music_meta_loaded", count=len(self._cache))
         return len(self._cache)

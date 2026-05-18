@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
+
+from fastapi import Response
+
+from aquadx.models.domain import ResponseEnvelope
+
+T = TypeVar("T")
 
 
 class Cache(Protocol):
@@ -31,3 +37,18 @@ async def cached_call(
     value = await loader()
     await cache.set(key, value, ttl=ttl)
     return value, "MISS"
+
+
+async def cached_envelope(  # noqa: UP047  # keep TypeVar form for pydantic-generic interop
+    cache: Cache,
+    key: str,
+    ttl: int,
+    loader: Callable[[], Awaitable[T]],
+    response: Response,
+) -> ResponseEnvelope[T]:
+    """Run the cached load, wire x-cache header, wrap in ResponseEnvelope."""
+    value, state = await cached_call(cache, key, ttl, loader)
+    response.headers["x-cache"] = state
+    envelope: ResponseEnvelope[T] = ResponseEnvelope(data=value)
+    envelope.meta.cached = state == "HIT"
+    return envelope

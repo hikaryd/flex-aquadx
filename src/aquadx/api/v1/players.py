@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, Response
 
 from aquadx.api.deps import get_cache, get_client, music_lookup
 from aquadx.api.errors import NotFoundError
-from aquadx.cache.base import Cache, cached_call
+from aquadx.cache.base import Cache, cached_envelope
 from aquadx.clients.aquadx import AquadxClient
 from aquadx.mappers.maimai import (
     map_favorites,
@@ -44,14 +44,6 @@ async def _user_summary(client: AquadxClient, username: str) -> dict[str, Any]:
     return raw
 
 
-def _cache_key(*parts: object) -> str:
-    return "|".join(str(p) for p in parts)
-
-
-def _apply_cache_state(response: Response, state: str) -> None:
-    response.headers["x-cache"] = state
-
-
 @router.get(
     "/{username}",
     response_model=ResponseEnvelope[Player],
@@ -61,7 +53,6 @@ async def player(
     username: str,
     response: Response,
     client: AquadxClient = Depends(get_client),
-    lookup: dict[int, MusicMeta] = Depends(music_lookup),
     cache: Cache = Depends(get_cache),
     settings: Settings = Depends(get_settings),
 ) -> ResponseEnvelope[Player]:
@@ -86,16 +77,9 @@ async def player(
             maimai = None
         return Player(username=username, games=games, maimai=maimai)
 
-    value, state = await cached_call(
-        cache,
-        _cache_key("player", username),
-        settings.cache_ttl_player_seconds,
-        _load,
+    return await cached_envelope(
+        cache, f"player|{username}", settings.cache_ttl_player_seconds, _load, response
     )
-    _apply_cache_state(response, state)
-    envelope = ResponseEnvelope[Player](data=value)
-    envelope.meta.cached = state == "HIT"
-    return envelope
 
 
 @router.get(
@@ -119,16 +103,9 @@ async def maimai_profile(
             detail if isinstance(detail, dict) else None,
         )
 
-    value, state = await cached_call(
-        cache,
-        _cache_key("maimai-profile", username),
-        settings.cache_ttl_player_seconds,
-        _load,
+    return await cached_envelope(
+        cache, f"maimai-profile|{username}", settings.cache_ttl_player_seconds, _load, response
     )
-    _apply_cache_state(response, state)
-    envelope = ResponseEnvelope[MaimaiProfile](data=value)
-    envelope.meta.cached = state == "HIT"
-    return envelope
 
 
 @router.get(
@@ -150,16 +127,9 @@ async def maimai_rating(
             raise NotFoundError(f"No rating data for {username}")
         return map_rating_frame(raw, music_lookup=lookup)
 
-    value, state = await cached_call(
-        cache,
-        _cache_key("maimai-rating", username),
-        settings.cache_ttl_player_seconds,
-        _load,
+    return await cached_envelope(
+        cache, f"maimai-rating|{username}", settings.cache_ttl_player_seconds, _load, response
     )
-    _apply_cache_state(response, state)
-    envelope = ResponseEnvelope[RatingFrame](data=value)
-    envelope.meta.cached = state == "HIT"
-    return envelope
 
 
 @router.get(
@@ -179,20 +149,14 @@ async def maimai_recent(
     async def _load() -> list[RecentPlay]:
         raw = await client.get(f"{MAI2_PREFIX}/recent", params={"username": username})
         rows = raw if isinstance(raw, list) else []
-        # Cache the full list at max upstream size; slice post-cache so distinct
-        # ?limit=N values share one upstream fetch per TTL window.
+        # Cache the full list; slice post-cache so distinct ?limit=N values
+        # share one upstream fetch per TTL window.
         return map_recent_plays(rows, music_lookup=lookup, limit=None)
 
-    cached_value, state = await cached_call(
-        cache,
-        _cache_key("maimai-recent", username),
-        settings.cache_ttl_player_seconds,
-        _load,
+    envelope = await cached_envelope(
+        cache, f"maimai-recent|{username}", settings.cache_ttl_player_seconds, _load, response
     )
-    sliced: list[RecentPlay] = list(cached_value)[:limit]
-    _apply_cache_state(response, state)
-    envelope = ResponseEnvelope[list[RecentPlay]](data=sliced)
-    envelope.meta.cached = state == "HIT"
+    envelope.data = envelope.data[:limit]
     return envelope
 
 
@@ -214,16 +178,9 @@ async def maimai_favorites(
         rows = raw if isinstance(raw, list) else []
         return map_favorites(rows, music_lookup=lookup)
 
-    value, state = await cached_call(
-        cache,
-        _cache_key("maimai-favorites", username),
-        settings.cache_ttl_player_seconds,
-        _load,
+    return await cached_envelope(
+        cache, f"maimai-favorites|{username}", settings.cache_ttl_player_seconds, _load, response
     )
-    _apply_cache_state(response, state)
-    envelope = ResponseEnvelope[list[FavoriteEntry]](data=value)
-    envelope.meta.cached = state == "HIT"
-    return envelope
 
 
 @router.get(
@@ -243,13 +200,6 @@ async def maimai_trend(
         rows = raw if isinstance(raw, list) else []
         return map_trend(rows)
 
-    value, state = await cached_call(
-        cache,
-        _cache_key("maimai-trend", username),
-        settings.cache_ttl_player_seconds,
-        _load,
+    return await cached_envelope(
+        cache, f"maimai-trend|{username}", settings.cache_ttl_player_seconds, _load, response
     )
-    _apply_cache_state(response, state)
-    envelope = ResponseEnvelope[list[TrendPoint]](data=value)
-    envelope.meta.cached = state == "HIT"
-    return envelope

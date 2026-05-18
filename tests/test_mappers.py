@@ -125,12 +125,22 @@ def test_map_recent_plays_normalises_and_limits() -> None:
     rows = [
         {
             "playlogId": 1,
+            "trackNo": 1,
             "musicId": 100,
             "level": 3,
             "achievement": 980000,
             "playDate": "2026-05-18",
+            "userPlayDate": "2026-05-18 14:25:04",
+            "placeName": "Some Arcade",
         },
-        {"playlogId": 2, "musicId": 101, "level": 2, "achievement": 950000, "isFullCombo": True},
+        {
+            "playlogId": 2,
+            "trackNo": 2,
+            "musicId": 101,
+            "level": 2,
+            "achievement": 950000,
+            "isFullCombo": True,
+        },
         {"musicId": "not-int", "level": 0, "achievement": 0},  # filtered
     ]
     lookup = {100: MusicMeta(id=100, title="A")}
@@ -138,7 +148,12 @@ def test_map_recent_plays_normalises_and_limits() -> None:
     assert len(out) == 2
     assert out[0].music is not None and out[0].music.title == "A"
     assert out[0].rank == "S+"
+    assert out[0].track_no == 1
+    assert out[0].place_name == "Some Arcade"
+    assert out[0].user_play_date == "2026-05-18 14:25:04"
+    assert out[0].playlog_id is None  # /recent never exposes global PK
     assert out[1].is_full_combo is True
+    assert out[1].track_no == 2
     assert out[1].music is None
 
 

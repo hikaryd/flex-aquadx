@@ -1,8 +1,8 @@
 services:
-  aquadx-python:
+  flex-aquadx:
     build: .
-    image: aquadx-python:latest
-    container_name: aquadx-python
+    image: flex-aquadx:latest
+    container_name: flex-aquadx
     ports:
       - "${HOST_PORT:-8000}:8000"
     environment:

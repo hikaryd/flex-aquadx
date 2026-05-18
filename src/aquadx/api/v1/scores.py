@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Response
 
 from aquadx.api.deps import get_cache, get_client, music_lookup
 from aquadx.api.errors import NotFoundError
-from aquadx.cache.base import Cache, cached_call
+from aquadx.cache.base import Cache, cached_envelope
 from aquadx.clients.aquadx import AquadxClient
 from aquadx.mappers.maimai import map_recent_plays
 from aquadx.models.domain import MusicMeta, RecentPlay, ResponseEnvelope
@@ -20,7 +20,15 @@ MAI2_PREFIX = "/api/v2/game/mai2"
 @router.get(
     "/v1/scores/{playlog_id}",
     response_model=ResponseEnvelope[RecentPlay],
-    summary="Single playlog detail",
+    summary="Single playlog by global database PK",
+    description=(
+        "Fetch one play by its global database primary key. "
+        "Note: the public `/recent` endpoint does NOT expose this PK — "
+        "upstream `playlogId` in `/recent` is the in-session track number, "
+        "not a stable identifier. This route is therefore only useful when "
+        "you already know a PK (e.g. from upstream admin/bot access). "
+        "For player history, consume `/v1/players/{username}/maimai/recent` directly."
+    ),
 )
 async def playlog_detail(
     playlog_id: int,
@@ -39,13 +47,9 @@ async def playlog_detail(
             raise NotFoundError(f"Playlog not parseable: {playlog_id}")
         return mapped[0]
 
-    value, state = await cached_call(
-        cache, f"playlog|{playlog_id}", settings.cache_ttl_player_seconds, _load
+    return await cached_envelope(
+        cache, f"playlog|{playlog_id}", settings.cache_ttl_player_seconds, _load, response
     )
-    response.headers["x-cache"] = state
-    envelope = ResponseEnvelope[RecentPlay](data=value)
-    envelope.meta.cached = state == "HIT"
-    return envelope
 
 
 @router.get(
@@ -87,8 +91,6 @@ async def user_music_from_list(
         return map_recent_plays(rows, music_lookup=lookup)
 
     cache_key = f"maimai-scores|{username}|{','.join(map(str, ids_sorted))}"
-    value, state = await cached_call(cache, cache_key, settings.cache_ttl_player_seconds, _load)
-    response.headers["x-cache"] = state
-    envelope = ResponseEnvelope[list[RecentPlay]](data=value)
-    envelope.meta.cached = state == "HIT"
-    return envelope
+    return await cached_envelope(
+        cache, cache_key, settings.cache_ttl_player_seconds, _load, response
+    )

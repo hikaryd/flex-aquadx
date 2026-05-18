@@ -29,12 +29,13 @@ def create_app() -> FastAPI:
     configure_logging(settings.log_level)
 
     app = FastAPI(
-        title="aquadx-python",
+        title="flex-aquadx",
         version=__version__,
         description=(
-            "Clean async microservice wrapping the AquaDX REST v2 API. "
-            "Provides player profiles, maimai scores, rating frames, rankings, and asset URLs. "
-            "Inherits the CC BY-NC-SA 4.0 licence from upstream — non-commercial only."
+            "Асинхронный микросервис-обёртка над AquaDX REST v2 API. "
+            "Предоставляет профили игроков, maimai-скоры, рейтинговые фреймы, "
+            "ранкинги и URL-ы ассетов. Наследует лицензию CC BY-NC-SA 4.0 от "
+            "upstream — только некоммерческое использование."
         ),
     )
     install_request_id_middleware(app)

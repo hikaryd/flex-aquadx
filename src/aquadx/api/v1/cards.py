@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Response
 
 from aquadx.api.deps import get_cache, get_client
 from aquadx.api.errors import NotFoundError
-from aquadx.cache.base import Cache, cached_call
+from aquadx.cache.base import Cache, cached_envelope
 from aquadx.clients.aquadx import AquadxClient
 from aquadx.models.domain import CardSummary, ResponseEnvelope
 from aquadx.settings import Settings, get_settings
@@ -26,7 +26,7 @@ def _normalise(raw: dict[str, Any]) -> CardSummary:
         card_id=card.get("cardId") or card.get("luid") or card.get("id"),
         ext_id=card.get("extId"),
         access_time=card.get("accessTime"),
-        raw=raw if isinstance(raw, dict) else None,
+        raw=raw,
     )
 
 
@@ -50,10 +50,6 @@ async def card_summary(
             return CardSummary(card_id=card_id, raw={"games": raw})
         raise NotFoundError(f"Card not found: {card_id}")
 
-    value, state = await cached_call(
-        cache, f"card|{card_id}", settings.cache_ttl_player_seconds, _load
+    return await cached_envelope(
+        cache, f"card|{card_id}", settings.cache_ttl_player_seconds, _load, response
     )
-    response.headers["x-cache"] = state
-    envelope = ResponseEnvelope[CardSummary](data=value)
-    envelope.meta.cached = state == "HIT"
-    return envelope

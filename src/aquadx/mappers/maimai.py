@@ -17,7 +17,6 @@ from aquadx.models.domain import (
     RecentPlay,
     TrendPoint,
 )
-from aquadx.models.upstream import UpstreamMaiPlaylog
 
 # achievement is stored * 10000. 101.5234% in UI = 1015234 raw.
 ACHIEVEMENT_SCALE = 10_000.0
@@ -155,25 +154,27 @@ def map_rating_frame(
 
 
 def map_recent_plays(
-    rows: list[dict[str, Any]] | list[UpstreamMaiPlaylog],
+    rows: list[dict[str, Any]],
     *,
     music_lookup: dict[int, MusicMeta],
     limit: int | None = None,
 ) -> list[RecentPlay]:
     out: list[RecentPlay] = []
     for row in rows:
-        data = row.model_dump() if isinstance(row, UpstreamMaiPlaylog) else dict(row)
+        data = dict(row)
         mid = _maybe_int(data.get("musicId"))
         if mid is None:
             continue
         ach_raw = _maybe_int(data.get("achievement")) or 0
         lvl = _maybe_int(data.get("level")) or 0
         pct = normalize_achievement(ach_raw)
+        # upstream `/recent` does NOT expose the global database PK in its JSON
+        # (only `playlogId` which is the 1/2/3 in-session track number). The
+        # `id` key here is the real PK used by `/playlog?id=X` and our test
+        # fixtures — read it ONLY if explicitly present.
         out.append(
             RecentPlay(
-                # upstream uses `playlogId` (camelCase) in /recent; `id` is used by
-                # the bare /playlog?id=X endpoint and our hand-rolled fixtures.
-                playlog_id=_maybe_int(data.get("playlogId") or data.get("id")),
+                playlog_id=_maybe_int(data.get("id")),
                 music=music_lookup.get(mid),
                 difficulty=difficulty_name(lvl),
                 achievement=pct,
@@ -186,7 +187,10 @@ def map_recent_plays(
                 is_new_record=data.get("isNewRecord"),
                 max_combo=_maybe_int(data.get("maxCombo")),
                 play_date=data.get("playDate"),
+                user_play_date=data.get("userPlayDate"),
                 after_rating=_maybe_int(data.get("afterRating")),
+                track_no=_maybe_int(data.get("trackNo") or data.get("playlogId")),
+                place_name=data.get("placeName"),
             )
         )
     if limit is not None:

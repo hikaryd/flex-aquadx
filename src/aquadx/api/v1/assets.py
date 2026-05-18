@@ -16,10 +16,6 @@ from aquadx.settings import Settings, get_settings
 router = APIRouter(prefix="/v1/assets/maimai", tags=["assets"])
 
 
-def _resolve_jacket_url(music_id: int, settings: Settings) -> str:
-    return jacket_url(music_id, settings.aquadx_data_host)
-
-
 def _resolve_item_url(kind: str, item_id: int, settings: Settings) -> str:
     safe_kind = "".join(c for c in kind if c.isalnum() or c in "-_").lower() or "misc"
     return f"{settings.aquadx_data_host.rstrip('/')}/d/mai2/{safe_kind}/{item_id:06d}.png"
@@ -60,7 +56,7 @@ async def music_jacket(
     proxy: bool | None = Query(default=None),
     settings: Settings = Depends(get_settings),
 ) -> JSONResponse | RedirectResponse | StreamingResponse:
-    url = _resolve_jacket_url(music_id, settings)
+    url = jacket_url(music_id, settings.aquadx_data_host)
     if format == "json":
         return JSONResponse({"url": url})
     if proxy is True or (proxy is None and settings.assets_mode == "proxy"):
