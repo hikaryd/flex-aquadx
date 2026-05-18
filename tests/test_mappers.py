@@ -89,7 +89,9 @@ def test_map_rating_frame_inlines_music_meta_legacy_3field() -> None:
     assert frame.best35[0].music.title == "Oshama Scramble!"
     assert frame.best35[0].achievement == 101.0234
     assert frame.best35[0].rank == "SSS+"
-    assert frame.best35[0].rating_contribution is None
+    # Legacy 3-field — без music levels: fallback chart_lv = int(level=3),
+    # формула: 3 * 22.4 * 100.5/100 = 67.5 → 67.
+    assert frame.best35[0].rating_contribution == 67
     # Unknown music id → music is None but entry preserved
     assert frame.best35[1].music is None
     assert len(frame.best15) == 1
@@ -97,27 +99,36 @@ def test_map_rating_frame_inlines_music_meta_legacy_3field() -> None:
 
 
 def test_map_rating_frame_handles_4field_upstream_format() -> None:
-    """Current upstream format: [musicId, level, ratingContribution, achievement]."""
+    """Current upstream format: [musicId, level, ratingContribution, achievement].
+
+    Rating contribution мы вычисляем сами по формуле (level из music meta + ach),
+    сырое поле upstream игнорируется — оно может быть deluxe_score / в формате *100.
+    """
     raw = {
         "best35": [
-            # PANDORA PARADOXXX, RE:MASTER, contrib 19998, ach 100.8790%
-            ["834", "4", "19998", "1008790"],
-            # 系ぎて, RE:MASTER, contrib 24004, ach 100.6464%
-            ["11663", "4", "24004", "1006464"],
+            ["834", "4", "19998", "1008790"],  # PANDORA PARADOXXX, RE:MASTER
+            ["11663", "4", "24004", "1006464"],  # 系ぎて, RE:MASTER
         ],
         "best15": [],
         "musicList": [],
     }
-    frame = map_rating_frame(raw, music_lookup={})
+    # Music meta даёт реальный chart level для RE:MASTER.
+    lookup = {
+        834: MusicMeta(id=834, levels=[3.0, 7.0, 10.0, 13.0, 14.8, 0.0]),  # RE:M = 14.8
+        11663: MusicMeta(id=11663, levels=[3.0, 7.0, 10.0, 13.0, 14.6, 0.0]),  # RE:M = 14.6
+    }
+    frame = map_rating_frame(raw, music_lookup=lookup)
     assert len(frame.best35) == 2
     t0 = frame.best35[0]
     assert t0.achievement == 100.879
     assert t0.rank == "SSS+"
-    assert t0.rating_contribution == 19998
+    # 14.8 * 22.4 * 100.5/100 = 333.07 → 333
+    assert t0.rating_contribution == 333
     assert t0.difficulty == "RE:MASTER"
     t1 = frame.best35[1]
     assert t1.achievement == 100.6464
-    assert t1.rating_contribution == 24004
+    # 14.6 * 22.4 * 100.5/100 = 328.6 → 328
+    assert t1.rating_contribution == 328
 
 
 def test_map_recent_plays_normalises_and_limits() -> None:

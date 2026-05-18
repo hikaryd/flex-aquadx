@@ -88,6 +88,38 @@ class RatingFrame(BaseModel):
     total_rating: int | None = None
 
 
+class JudgementCounts(BaseModel):
+    crit: int = 0
+    perfect: int = 0
+    great: int = 0
+    good: int = 0
+    miss: int = 0
+
+
+class NoteTypeStats(BaseModel):
+    """Сколько CRIT/PERFECT/etc. для конкретного типа нот (tap/hold/slide/...)."""
+
+    crit: int = 0
+    perfect: int = 0
+    great: int = 0
+    good: int = 0
+    miss: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.crit + self.perfect + self.great + self.good + self.miss
+
+
+class NoteAccuracy(BaseModel):
+    tap: NoteTypeStats = Field(default_factory=NoteTypeStats)
+    hold: NoteTypeStats = Field(default_factory=NoteTypeStats)
+    slide: NoteTypeStats = Field(default_factory=NoteTypeStats)
+    touch: NoteTypeStats = Field(default_factory=NoteTypeStats)
+    break_: NoteTypeStats = Field(default_factory=NoteTypeStats, alias="break")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class RecentPlay(BaseModel):
     # Внимание: upstream `/recent` НЕ отдаёт глобальный PK базы —
     # его поле `playlogId` это внутрисессионный номер трека (1/2/3,
@@ -109,6 +141,10 @@ class RecentPlay(BaseModel):
     after_rating: int | None = None
     track_no: int | None = None  # 1/2/3 — номер трека внутри кредита
     place_name: str | None = None  # имя аркадного аппарата
+    fast: int | None = None
+    late: int | None = None
+    judgements: JudgementCounts | None = None
+    note_accuracy: NoteAccuracy | None = None
 
 
 class FavoriteEntry(BaseModel):

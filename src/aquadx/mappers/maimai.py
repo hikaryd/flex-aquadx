@@ -8,8 +8,11 @@ from aquadx.models.domain import (
     DIFFICULTY_NAMES,
     Difficulty,
     FavoriteEntry,
+    JudgementCounts,
     MaimaiProfile,
     MusicMeta,
+    NoteAccuracy,
+    NoteTypeStats,
     Rank,
     RankCount,
     RatedTrack,
@@ -64,6 +67,44 @@ def maybe_int(v: Any) -> int | None:
         return None
 
 
+# Таблица rating-фактора по тиру достижения (maimai DX Splash+ /
+# обратно вычислено по примерам из живого maimaibot).
+_RATING_FACTOR_TABLE: tuple[tuple[float, float], ...] = (
+    (50.0, 8.0),
+    (60.0, 9.6),
+    (70.0, 11.2),
+    (75.0, 12.0),
+    (80.0, 13.6),
+    (90.0, 15.2),
+    (94.0, 16.8),
+    (97.0, 20.0),
+    (98.0, 20.3),
+    (99.0, 20.8),
+    (99.5, 21.1),
+    (100.0, 21.6),
+    (100.5, 22.4),
+)
+
+
+def compute_rating_contribution(level: float, achievement_pct: float) -> int:
+    """Вычислить maimai DX rating contribution из level и achievement %.
+
+    Формула: `floor(level * factor * min(ach, 100.5) / 100)`,
+    factor — табличное значение по тиру ach. Не доверяем сырому полю
+    upstream — формула надёжнее и совпадает с публичными tracker'ами.
+    """
+    if achievement_pct < 50 or level <= 0:
+        return 0
+    ach = min(achievement_pct, 100.5)
+    factor = _RATING_FACTOR_TABLE[0][1]
+    for threshold, f in _RATING_FACTOR_TABLE:
+        if ach >= threshold:
+            factor = f
+        else:
+            break
+    return int(level * factor * ach / 100)
+
+
 def parse_rating_csv(blob: str | None) -> list[tuple[int, int, int]]:
     """Разбор CSV `recent_rating` / `recent_rating_new` из upstream.
 
@@ -97,13 +138,22 @@ def map_rated_track(
     rating_contribution: int | None = None,
 ) -> RatedTrack:
     pct = normalize_achievement(achievement_raw)
+    # Реальный rating contribution считаем формулой через chart-уровень
+    # (плавающее значение из music meta при наличии). Сырое поле upstream
+    # игнорируем — оно может быть deluxe_score / unrelated id / в формате *100.
+    chart_lv: float = float(level)
+    if music is not None and music.levels:
+        idx = level if 0 <= level < len(music.levels) else 0
+        if music.levels[idx] > 0:
+            chart_lv = float(music.levels[idx])
+    computed = compute_rating_contribution(chart_lv, pct) or rating_contribution
     return RatedTrack(
         music=music,
         difficulty=difficulty_name(level),
         achievement=pct,
         rank=rank_label(pct),
         deluxe_score=deluxe_score,
-        rating_contribution=rating_contribution,
+        rating_contribution=computed,
     )
 
 
@@ -152,6 +202,58 @@ def map_rating_frame(
     return RatingFrame(best35=best35, best15=best15, total_rating=None)
 
 
+def _note_stats(raw: dict[str, Any], prefix: str) -> NoteTypeStats:
+    """Извлечь breakdown CRIT/PERFECT/... для одного типа нот (tap/hold/...)."""
+    return NoteTypeStats(
+        crit=maybe_int(raw.get(f"{prefix}CriticalPerfect")) or 0,
+        perfect=maybe_int(raw.get(f"{prefix}Perfect")) or 0,
+        great=maybe_int(raw.get(f"{prefix}Great")) or 0,
+        good=maybe_int(raw.get(f"{prefix}Good")) or 0,
+        miss=maybe_int(raw.get(f"{prefix}Miss")) or 0,
+    )
+
+
+def _judgements(raw: dict[str, Any]) -> JudgementCounts | None:
+    """Aggregated CRIT/PERFECT/GREAT/GOOD/MISS поверх всех типов нот."""
+    crit = maybe_int(
+        raw.get("judgeCriticalPerfect") or raw.get("criticalPerfect") or raw.get("judgeCritical")
+    )
+    perfect = maybe_int(raw.get("judgePerfect") or raw.get("perfect"))
+    great = maybe_int(raw.get("judgeGreat") or raw.get("great"))
+    good = maybe_int(raw.get("judgeGood") or raw.get("good"))
+    miss = maybe_int(raw.get("judgeMiss") or raw.get("miss"))
+    if all(v is None for v in (crit, perfect, great, good, miss)):
+        # Aggregate сам из note-type полей если они есть.
+        per_type = [_note_stats(raw, p) for p in ("tap", "hold", "slide", "touch", "break")]
+        if any(s.total > 0 for s in per_type):
+            return JudgementCounts(
+                crit=sum(s.crit for s in per_type),
+                perfect=sum(s.perfect for s in per_type),
+                great=sum(s.great for s in per_type),
+                good=sum(s.good for s in per_type),
+                miss=sum(s.miss for s in per_type),
+            )
+        return None
+    return JudgementCounts(
+        crit=crit or 0,
+        perfect=perfect or 0,
+        great=great or 0,
+        good=good or 0,
+        miss=miss or 0,
+    )
+
+
+def _note_accuracy(raw: dict[str, Any]) -> NoteAccuracy | None:
+    tap = _note_stats(raw, "tap")
+    hold = _note_stats(raw, "hold")
+    slide = _note_stats(raw, "slide")
+    touch = _note_stats(raw, "touch")
+    breaks = _note_stats(raw, "break")
+    if any(s.total > 0 for s in (tap, hold, slide, touch, breaks)):
+        return NoteAccuracy(tap=tap, hold=hold, slide=slide, touch=touch, **{"break": breaks})
+    return None
+
+
 def map_recent_plays(
     rows: list[dict[str, Any]],
     *,
@@ -190,6 +292,10 @@ def map_recent_plays(
                 after_rating=maybe_int(row.get("afterRating")),
                 track_no=maybe_int(row.get("trackNo") or row.get("playlogId")),
                 place_name=row.get("placeName"),
+                fast=maybe_int(row.get("judgeFast") or row.get("fastCount")),
+                late=maybe_int(row.get("judgeLate") or row.get("lateCount")),
+                judgements=_judgements(row),
+                note_accuracy=_note_accuracy(row),
             )
         )
     if limit is not None:

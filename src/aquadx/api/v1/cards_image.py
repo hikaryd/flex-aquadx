@@ -111,19 +111,13 @@ async def recent_card(
         rank=str(play.rank),
         rating=rating,
         max_combo=int(play.max_combo or 0),
-        fast=0,
-        late=0,
+        fast=int(play.fast or 0),
+        late=int(play.late or 0),
         deluxe_score=int(play.deluxe_score or 0),
         deluxe_max=int(play.deluxe_score or 0),
         rating_delta=int(play.after_rating or 0) - rating if play.after_rating else 0,
-        judgements=[("CRIT", 0), ("PERFECT", 0), ("GREAT", 0), ("GOOD", 0), ("MISS", 0)],
-        note_accuracy=[
-            ("TAP", 1.0, 0),
-            ("HOLD", 1.0, 0),
-            ("SLIDE", 1.0, 0),
-            ("TOUCH", 1.0, 0),
-            ("BREAK", 1.0, 0),
-        ],
+        judgements=_judgements_for_render(play),
+        note_accuracy=_note_accuracy_for_render(play),
         play_date=str(play.user_play_date or play.play_date or ""),
         jacket=jacket,
     )
@@ -143,6 +137,49 @@ async def recent_card(
         theme=theme,
         scale=scale,
     )
+
+
+def _judgements_for_render(play: object) -> list[tuple[str, int]]:
+    """RecentPlay.judgements → list[(label, value)] для шаблона."""
+    j = getattr(play, "judgements", None)
+    if j is None:
+        return [("CRIT", 0), ("PERFECT", 0), ("GREAT", 0), ("GOOD", 0), ("MISS", 0)]
+    return [
+        ("CRIT", j.crit),
+        ("PERFECT", j.perfect),
+        ("GREAT", j.great),
+        ("GOOD", j.good),
+        ("MISS", j.miss),
+    ]
+
+
+def _note_accuracy_for_render(play: object) -> list[tuple[str, float, int]]:
+    """RecentPlay.note_accuracy → list[(label, accuracy_frac, crit_count)]."""
+    n = getattr(play, "note_accuracy", None)
+    if n is None:
+        return [
+            ("TAP", 1.0, 0),
+            ("HOLD", 1.0, 0),
+            ("SLIDE", 1.0, 0),
+            ("TOUCH", 1.0, 0),
+            ("BREAK", 1.0, 0),
+        ]
+
+    def _row(label: str, stats: object) -> tuple[str, float, int]:
+        total = getattr(stats, "total", 0) or 0
+        crit = getattr(stats, "crit", 0) or 0
+        perfect = getattr(stats, "perfect", 0) or 0
+        # Accuracy fraction: считаем «как хорошо» по тиру (CRIT + PERFECT) / total.
+        frac = (crit + perfect) / total if total > 0 else 0.0
+        return label, frac, crit
+
+    return [
+        _row("TAP", n.tap),
+        _row("HOLD", n.hold),
+        _row("SLIDE", n.slide),
+        _row("TOUCH", n.touch),
+        _row("BREAK", n.break_),
+    ]
 
 
 def _safe_level_index(difficulty: str, levels: list[float]) -> int:
