@@ -1,0 +1,16 @@
+services:
+  aquadx-python:
+    build: .
+    image: aquadx-python:latest
+    container_name: aquadx-python
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    environment:
+      AQUADX_BASE_URL: ${AQUADX_BASE_URL:-https://aquadx.net/aqua}
+      AQUADX_DATA_HOST: ${AQUADX_DATA_HOST:-https://aquadx.net}
+      ASSETS_MODE: ${ASSETS_MODE:-redirect}
+      CACHE_BACKEND: ${CACHE_BACKEND:-memory}
+      HTTP_TIMEOUT_S: ${HTTP_TIMEOUT_S:-10}
+      HTTP_RPS: ${HTTP_RPS:-5}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    restart: unless-stopped
