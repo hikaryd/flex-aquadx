@@ -169,9 +169,11 @@ def _note_accuracy_for_render(play: object) -> list[tuple[str, float, int]]:
         total = getattr(stats, "total", 0) or 0
         crit = getattr(stats, "crit", 0) or 0
         perfect = getattr(stats, "perfect", 0) or 0
-        # Accuracy fraction: считаем «как хорошо» по тиру (CRIT + PERFECT) / total.
+        # Полоса = (CRIT + PERFECT) / total — «как хорошо сыграно».
+        # Справа показываем total по типу нот (как в живом maimaibot:
+        # TAP 483, HOLD 53, SLIDE 60, TOUCH 102, BREAK 42).
         frac = (crit + perfect) / total if total > 0 else 0.0
-        return label, frac, crit
+        return label, frac, total
 
     return [
         _row("TAP", n.tap),
