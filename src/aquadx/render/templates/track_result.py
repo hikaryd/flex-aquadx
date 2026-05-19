@@ -574,14 +574,16 @@ def render(inp: TrackResultInput) -> bytes:
             ("MAX COMBO", f"{inp.max_combo}", C_TEXT_HI),
             ("DELUXE", f"{inp.deluxe_score}/{inp.deluxe_max}", C_TEXT_HI),
         )
+        # Stride 72 (вместо 60) — глифы 32pt mono иначе naezdают на label
+        # следующего блока (заметно у длинного DELUXE 1333/1333).
         for i, (stat_lbl, stat_val, stat_col) in enumerate(stats):
-            sy = stats_top_y + i * 60
+            sy = stats_top_y + i * 72
             _eyebrow(canvas, stat_lbl, stats_x, sy)
-            val_font = skia.Font(fonts.get("mono-bold"), 32)
+            val_font = skia.Font(fonts.get("mono-bold"), 30)
             canvas.drawString(
                 stat_val,
                 stats_x,
-                sy + 36,
+                sy + 38,
                 val_font,
                 skia.Paint(AntiAlias=True, Color4f=stat_col),
             )
