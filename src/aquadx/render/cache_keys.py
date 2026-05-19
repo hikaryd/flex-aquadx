@@ -12,8 +12,8 @@ from aquadx.render.fonts import font_pack_hash
 TEMPLATE_VERSION = "1"
 
 
-def compute_etag(endpoint: str, dto: Any, *, theme: str = "dark", scale: int = 1) -> str:
-    """sha256(template_version + font_pack_hash + canonical_dto + theme + scale)[:16].
+def compute_etag(endpoint: str, dto: Any, *, scale: int = 1) -> str:
+    """sha256(template_version + font_pack_hash + canonical_dto + scale)[:16].
 
     DTO канонизируется через model_dump(mode='json') + json.dumps(sort_keys=True),
     чтобы порядок ключей и unicode-нормализация не влияли на ETag.
@@ -33,7 +33,7 @@ def compute_etag(endpoint: str, dto: Any, *, theme: str = "dark", scale: int = 1
     h.update(endpoint.encode())
     h.update(b"|")
     h.update(payload.encode("utf-8"))
-    h.update(f"|{theme}|{scale}".encode())
+    h.update(f"|{scale}".encode())
     return h.hexdigest()[:16]
 
 

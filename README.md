@@ -25,10 +25,10 @@ Python 3.12+ · FastAPI · httpx (async) · pydantic v2 · cachetools · structl
 PNG-карточки рисуются прямо в Python через [skia-python](https://github.com/kyamagu/skia-python)
 (биндинги Skia из Chromium). Без headless-браузера, без второго рантайма — всё in-process.
 
-- `GET /v1/players/{u}/maimai/recent/card.png?index=N&theme=dark&scale=1` — карточка
-  одного результата (`оригинал maimaibot`-стиль: jacket, ачивмент с gradient,
-  rank emblem с glow, judgements, note accuracy).
-- `GET /v1/players/{u}/maimai/rating/card.png?theme=dark` — сводный B35+B15 фрейм.
+- `GET /v1/players/{u}/maimai/recent/card.png?index=N&scale=1` — карточка
+  одного результата (editorial-Wired-стиль: jacket, гигантский achievement-герой,
+  rank typography, judgements, note accuracy).
+- `GET /v1/players/{u}/maimai/rating/card.png?scale=1` — сводный B35+B15 фрейм.
 
 Особенности:
 
@@ -37,7 +37,7 @@ PNG-карточки рисуются прямо в Python через [skia-pyth
 - CJK + emoji корректно: HarfBuzz shaping встроен в Skia; используем Inter +
   JetBrains Mono + Noto Sans JP из `assets/fonts/` (OFL 1.1).
 - Кэш PNG: 60 секунд по `(endpoint, ETag)`. ETag детерминирован: `sha256(version |
-  font_pack_hash | canonical_dto | theme | scale)[:16]`. Апгрейд шрифтов или
+  font_pack_hash | canonical_dto | scale)[:16]`. Апгрейд шрифтов или
   шаблона автоматически инвалидирует кэш.
 - Backpressure: `asyncio.Semaphore(RENDER_CONCURRENCY)` + acquire-таймаут →
   HTTP 503 + `Retry-After` при перегрузе.

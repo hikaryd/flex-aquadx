@@ -45,10 +45,9 @@ async def _png_response(
     etag_payload: Any,
     build_png: Callable[[], Awaitable[bytes]],
     *,
-    theme: str,
     scale: int,
 ) -> Response:
-    etag = compute_etag(endpoint, etag_payload, theme=theme, scale=scale)
+    etag = compute_etag(endpoint, etag_payload, scale=scale)
     key = image_cache_key(endpoint, etag)
     cached = await cache.get(key)
     if cached is not None:
@@ -70,7 +69,6 @@ async def _png_response(
 async def recent_card(
     username: str,
     index: int = Query(0, ge=0, le=199),
-    theme: str = Query("dark", pattern="^(dark|light)$"),
     scale: int = Query(1, ge=1, le=2),
     client: AquadxClient = Depends(get_client),
     lookup: dict[int, MusicMeta] = Depends(music_lookup),
@@ -134,7 +132,6 @@ async def recent_card(
         endpoint=f"recent/{username}/{index}",
         etag_payload=etag_payload,
         build_png=_build,
-        theme=theme,
         scale=scale,
     )
 
@@ -201,7 +198,6 @@ def _safe_level_index(difficulty: str, levels: list[float]) -> int:
 )
 async def rating_card(
     username: str,
-    theme: str = Query("dark", pattern="^(dark|light)$"),
     scale: int = Query(1, ge=1, le=2),
     client: AquadxClient = Depends(get_client),
     lookup: dict[int, MusicMeta] = Depends(music_lookup),
@@ -270,6 +266,5 @@ async def rating_card(
         endpoint=f"rating/{username}",
         etag_payload=etag_payload,
         build_png=_build,
-        theme=theme,
         scale=scale,
     )
