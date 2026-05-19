@@ -15,7 +15,6 @@ from aquadx.render import fonts
 from aquadx.render.palette import (
     C_ACCENT,
     C_BG,
-    C_BG_BOT,
     C_DIVIDER,
     C_GLASS_BORDER,
     C_SURFACE,
@@ -87,7 +86,6 @@ def _background(canvas: skia.Canvas) -> None:
         )
     )
     canvas.drawRect(skia.Rect.MakeWH(W, H), paint)
-    _ = C_BG_BOT  # alias оставлен для совместимости импортов
 
 
 def _surface(canvas: skia.Canvas, rect: skia.Rect, *, radius: float = 16.0) -> None:

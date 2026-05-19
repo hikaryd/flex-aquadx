@@ -12,13 +12,10 @@ import skia
 # Базовый фон — графитово-навиди.
 C_BG = skia.ColorSetRGB(0x0A, 0x0B, 0x10)
 C_BG_TOP = C_BG
-C_BG_BOT = skia.ColorSetRGB(0x07, 0x08, 0x0C)
 
 # Поверхности карточек: тонкие dark-glass плитки.
 C_SURFACE = skia.Color4f(1.0, 1.0, 1.0, 0.035)
 C_SURFACE_HI = skia.Color4f(1.0, 1.0, 1.0, 0.055)
-C_GLASS_FILL = C_SURFACE
-C_GLASS_OVER = skia.Color4f(1.0, 1.0, 1.0, 0.015)
 C_GLASS_BORDER = skia.Color4f(1.0, 1.0, 1.0, 0.07)
 C_DIVIDER = skia.Color4f(1.0, 1.0, 1.0, 0.06)
 
@@ -31,13 +28,7 @@ C_TEXT_FAINT = skia.Color4f(0.42, 0.44, 0.50, 1.0)
 # ключевых чисел (rating, achievement, contribution). Не для декора.
 C_ACCENT = skia.Color4f(0.71, 1.0, 0.42, 1.0)  # #B6FF6B
 C_ACCENT_DIM = skia.Color4f(0.71, 1.0, 0.42, 0.35)
-
-# Совместимые alias-ы — старые шаблоны их импортируют.
 C_ACH_A = C_ACCENT
-C_ACH_B = C_TEXT_HI
-C_MESH_VIOLET = C_SURFACE_HI
-C_MESH_PINK = C_SURFACE_HI
-C_MESH_CYAN = C_SURFACE_HI
 
 # Difficulty: 4px-маркер слева от пилюли. Сам текст белый.
 DIFFICULTY_COLORS: dict[str, skia.Color4f] = {
