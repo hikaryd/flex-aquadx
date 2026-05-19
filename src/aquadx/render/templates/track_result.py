@@ -566,24 +566,24 @@ def render(inp: TrackResultInput) -> bytes:
                 skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
             )
 
-        # STATS: справа — три блока в линию.
+        # STATS: справа — три блока в столбик. Stride 56, font 26pt —
+        # умещаются все три значения между bot_y и footer-rule (H-50),
+        # включая длинное DELUXE «1333/1333».
         stats_x = 1180
-        stats_top_y = bot_y + 56
+        stats_top_y = bot_y + 46
         stats = (
             ("RATING", f"{inp.rating}", C_ACH_A),
             ("MAX COMBO", f"{inp.max_combo}", C_TEXT_HI),
             ("DELUXE", f"{inp.deluxe_score}/{inp.deluxe_max}", C_TEXT_HI),
         )
-        # Stride 72 (вместо 60) — глифы 32pt mono иначе naezdают на label
-        # следующего блока (заметно у длинного DELUXE 1333/1333).
         for i, (stat_lbl, stat_val, stat_col) in enumerate(stats):
-            sy = stats_top_y + i * 72
+            sy = stats_top_y + i * 56
             _eyebrow(canvas, stat_lbl, stats_x, sy)
-            val_font = skia.Font(fonts.get("mono-bold"), 30)
+            val_font = skia.Font(fonts.get("mono-bold"), 26)
             canvas.drawString(
                 stat_val,
                 stats_x,
-                sy + 38,
+                sy + 30,
                 val_font,
                 skia.Paint(AntiAlias=True, Color4f=stat_col),
             )
