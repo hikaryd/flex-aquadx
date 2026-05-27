@@ -10,6 +10,8 @@ Telegram bot that uses `flex-aquadx` for player profiles, recent-score cards, an
 
 The bot registers Telegram command hints for private chats and groups via `setMyCommands`.
 
+By default state is stored in local SQLite. If `STORAGE_API_BASE` and `STORAGE_API_TOKEN` are set, the bot also uses the Cloudflare Worker/KV storage API as primary portable state for linked profiles and `/rs` → `/mine` chat context, with SQLite as fallback/cache for smooth migration between bot deployments.
+
 ## Env
 
 ```env
@@ -17,6 +19,10 @@ BOT_TOKEN=123456:telegram-token
 AQUADX_API_BASE=http://127.0.0.1:8017
 AQUADX_BOT_DB=/opt/aquadx-tg-bot/aquadx_bot.sqlite3
 LOG_LEVEL=INFO
+# optional portable state, compatible with maimaibot-storage Worker + KV
+STORAGE_API_BASE=https://example-worker.workers.dev
+STORAGE_API_TOKEN=shared-secret
+STORAGE_API_TIMEOUT=10
 ```
 
 ## Run

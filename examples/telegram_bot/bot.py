@@ -18,6 +18,9 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 API_BASE = os.getenv("AQUADX_API_BASE", "http://127.0.0.1:8017").rstrip("/")
 DB_PATH = Path(os.getenv("AQUADX_BOT_DB", "/opt/aquadx-tg-bot/aquadx_bot.sqlite3"))
 TIMEOUT = httpx.Timeout(35.0, connect=10.0)
+STORAGE_API_BASE = os.getenv("STORAGE_API_BASE", "").rstrip("/")
+STORAGE_API_TOKEN = os.getenv("STORAGE_API_TOKEN", "")
+STORAGE_TIMEOUT = httpx.Timeout(float(os.getenv("STORAGE_API_TIMEOUT", "10")), connect=5.0)
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("aquadx-tg-bot")
@@ -62,7 +65,7 @@ def init_db() -> None:
         conn.commit()
 
 
-def set_profile(tg_user_id: int, username: str) -> None:
+def set_profile_local(tg_user_id: int, username: str) -> None:
     with closing(db()) as conn:
         conn.execute(
             "insert into profiles(tg_user_id, aquadx_username) values(?, ?) "
@@ -72,13 +75,13 @@ def set_profile(tg_user_id: int, username: str) -> None:
         conn.commit()
 
 
-def get_profile(tg_user_id: int) -> str | None:
+def get_profile_local(tg_user_id: int) -> str | None:
     with closing(db()) as conn:
         row = conn.execute("select aquadx_username from profiles where tg_user_id=?", (tg_user_id,)).fetchone()
         return str(row[0]) if row else None
 
 
-def set_last_map(chat_id: int, last: LastMap) -> None:
+def set_last_map_local(chat_id: int, last: LastMap) -> None:
     with closing(db()) as conn:
         conn.execute(
             "insert into chat_last_map(chat_id, music_id, difficulty, title, artist, source_username) values(?, ?, ?, ?, ?, ?) "
@@ -89,13 +92,97 @@ def set_last_map(chat_id: int, last: LastMap) -> None:
         conn.commit()
 
 
-def get_last_map(chat_id: int) -> LastMap | None:
+def get_last_map_local(chat_id: int) -> LastMap | None:
     with closing(db()) as conn:
         row = conn.execute("select * from chat_last_map where chat_id=?", (chat_id,)).fetchone()
         if not row:
             return None
         return LastMap(int(row["music_id"]), str(row["difficulty"]), str(row["title"]), str(row["artist"]), str(row["source_username"]))
 
+
+
+def storage_enabled() -> bool:
+    return bool(STORAGE_API_BASE and STORAGE_API_TOKEN)
+
+
+async def storage_request(method: str, path: str, json_body: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    if not storage_enabled():
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=STORAGE_TIMEOUT) as client:
+            r = await client.request(
+                method,
+                f"{STORAGE_API_BASE}{path}",
+                headers={"Authorization": f"Bearer {STORAGE_API_TOKEN}"},
+                json=json_body,
+            )
+            r.raise_for_status()
+            return r.json()
+    except Exception as exc:
+        log.warning("storage %s %s failed: %s", method, path, exc)
+        return None
+
+
+async def set_profile(tg_user_id: int, username: str) -> None:
+    set_profile_local(tg_user_id, username)
+    await storage_request("PUT", f"/linked-profile/{tg_user_id}", {"username": username})
+
+
+async def get_profile(tg_user_id: int) -> str | None:
+    data = await storage_request("GET", f"/linked-profile/{tg_user_id}")
+    username = (data or {}).get("username")
+    if username:
+        set_profile_local(tg_user_id, str(username))
+        return str(username)
+    username = get_profile_local(tg_user_id)
+    if username:
+        await storage_request("PUT", f"/linked-profile/{tg_user_id}", {"username": username})
+    return username
+
+
+def last_map_to_context(last: LastMap) -> dict[str, Any]:
+    return {
+        "music_id": last.music_id,
+        "difficulty": last.difficulty,
+        "title": last.title,
+        "artist": last.artist,
+        "source_username": last.source_username,
+    }
+
+
+def last_map_from_context(value: dict[str, Any] | None) -> LastMap | None:
+    if not isinstance(value, dict):
+        return None
+    try:
+        return LastMap(
+            int(value["music_id"]),
+            str(value["difficulty"]),
+            str(value.get("title") or f"musicId {value['music_id']}"),
+            str(value.get("artist") or ""),
+            str(value.get("source_username") or ""),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+async def set_last_map(chat_id: int, message_id: int, last: LastMap) -> None:
+    set_last_map_local(chat_id, last)
+    context_payload = last_map_to_context(last)
+    await storage_request("PUT", f"/score-context/{chat_id}/{message_id}", context_payload)
+    await storage_request("PUT", f"/last-target/chat/{chat_id}", {"chat_id": chat_id, "message_id": message_id})
+
+
+async def get_last_map(chat_id: int) -> LastMap | None:
+    target = await storage_request("GET", f"/last-target/chat/{chat_id}")
+    target_payload = (target or {}).get("target") if isinstance(target, dict) else None
+    if isinstance(target_payload, dict) and target_payload.get("message_id") is not None:
+        context = await storage_request("GET", f"/score-context/{chat_id}/{target_payload['message_id']}")
+        last = last_map_from_context((context or {}).get("context") if isinstance(context, dict) else None)
+        if last:
+            set_last_map_local(chat_id, last)
+            return last
+    last = get_last_map_local(chat_id)
+    return last
 
 def parse_user_and_index(args: list[str], default_username: str | None) -> tuple[str | None, int]:
     username = default_username
@@ -140,7 +227,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
-    username = context.args[0] if context.args else get_profile(user_id)
+    username = context.args[0] if context.args else await get_profile(user_id)
     if not username:
         await update.message.reply_text(need_profile_text())
         return
@@ -150,7 +237,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(f"Не нашёл профиль `{username}` ({e.response.status_code}).")
         return
     if context.args:
-        set_profile(user_id, username)
+        await set_profile(user_id, username)
 
     player = data.get("data", {})
     mai = player.get("maimai") or {}
@@ -172,7 +259,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def rs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    default = get_profile(update.effective_user.id)
+    default = await get_profile(update.effective_user.id)
     username, index = parse_user_and_index(context.args, default)
     if not username:
         await update.message.reply_text(need_profile_text())
@@ -190,21 +277,22 @@ async def rs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         diff = str(play.get("difficulty") or "")
         title = str(music.get("title") or f"musicId {music_id}")
         artist = str(music.get("artist") or "")
-        set_last_map(update.effective_chat.id, LastMap(music_id, diff, title, artist, username))
+        last_map = LastMap(music_id, diff, title, artist, username)
         png = await api_png(f"/v1/players/{quote(username)}/maimai/recent/card.png?index={index}&theme=dark&scale=1")
     except httpx.HTTPStatusError as e:
         await update.message.reply_text(f"AquaDX вернул ошибку {e.response.status_code} для `{username}`.")
         return
     caption = f"`{username}` · {title} [{diff}]\nТеперь любой с привязанным профилем может написать `/mine`."
-    await update.message.reply_photo(photo=BytesIO(png), caption=caption)
+    sent = await update.message.reply_photo(photo=BytesIO(png), caption=caption)
+    await set_last_map(update.effective_chat.id, sent.message_id, last_map)
 
 
 async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    last = get_last_map(update.effective_chat.id)
+    last = await get_last_map(update.effective_chat.id)
     if not last:
         await update.message.reply_text("Сначала в этом чате надо вызвать `/rs`, чтобы выбрать карту.")
         return
-    username = context.args[0] if context.args else get_profile(update.effective_user.id)
+    username = context.args[0] if context.args else await get_profile(update.effective_user.id)
     if not username:
         await update.message.reply_text(need_profile_text())
         return
@@ -233,7 +321,7 @@ async def post_init(app: Application) -> None:
     await app.bot.set_my_commands(commands, scope={"type": BotCommandScopeType.ALL_GROUP_CHATS})
     await app.bot.set_my_commands(commands, scope={"type": BotCommandScopeType.ALL_PRIVATE_CHATS})
     me = await app.bot.get_me()
-    log.info("bot started as @%s, api=%s", me.username, API_BASE)
+    log.info("bot started as @%s, api=%s, storage=%s", me.username, API_BASE, "enabled" if storage_enabled() else "disabled")
 
 
 def main() -> None:

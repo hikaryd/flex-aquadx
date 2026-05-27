@@ -298,6 +298,10 @@ def map_recent_plays(
                 note_accuracy=_note_accuracy(row),
             )
         )
+    # Upstream `/recent` is not guaranteed to be newest-first. Keep /rs and
+    # recent/card.png aligned with AquaNet/maimaibot semantics by ordering by
+    # the actual user play timestamp descending before applying index/limit.
+    out.sort(key=lambda p: str(p.user_play_date or p.play_date or ""), reverse=True)
     if limit is not None:
         return out[:limit]
     return out
