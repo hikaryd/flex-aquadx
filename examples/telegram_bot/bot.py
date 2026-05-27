@@ -144,28 +144,31 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not username:
         await update.message.reply_text(need_profile_text())
         return
-    if context.args:
-        # Validate profile exists before saving.
-        try:
-            data = await api_json(f"/v1/players/{quote(username)}")
-        except httpx.HTTPStatusError as e:
-            await update.message.reply_text(f"Не нашёл профиль `{username}` ({e.response.status_code}).")
-            return
-        set_profile(user_id, username)
-    else:
+    try:
         data = await api_json(f"/v1/players/{quote(username)}")
+    except httpx.HTTPStatusError as e:
+        await update.message.reply_text(f"Не нашёл профиль `{username}` ({e.response.status_code}).")
+        return
+    if context.args:
+        set_profile(user_id, username)
+
     player = data.get("data", {})
     mai = player.get("maimai") or {}
-    lines = [f"Профиль: `{username}`"]
-    if mai:
-        lines += [
-            f"Имя: {mai.get('name') or '—'}",
-            f"Rating: {mai.get('rating') or '—'}",
-            f"Plays: {mai.get('total_plays') or '—'}",
-        ]
+    caption_parts = [f"Профиль `{username}`"]
     if context.args:
-        lines.append("Привязал к твоему Telegram ✅")
-    await update.message.reply_text("\n".join(lines))
+        caption_parts.append("привязан ✅")
+    if mai:
+        caption_parts.append(f"rating: {mai.get('rating') or '—'}")
+
+    await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
+    try:
+        png = await api_png(f"/v1/players/{quote(username)}/maimai/rating/card.png?theme=dark&scale=1")
+    except httpx.HTTPStatusError as e:
+        await update.message.reply_text(
+            "\n".join(caption_parts) + f"\nНе смог получить B50-картинку ({e.response.status_code})."
+        )
+        return
+    await update.message.reply_photo(photo=BytesIO(png), caption=" · ".join(caption_parts))
 
 
 async def rs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -222,7 +225,7 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def post_init(app: Application) -> None:
     commands = [
         BotCommand("start", "справка по AquaDX-боту"),
-        BotCommand("profile", "привязать или показать AquaDX-профиль"),
+        BotCommand("profile", "показать B50-профиль или привязать username"),
         BotCommand("rs", "показать recent score: /rs [username] [index]"),
         BotCommand("mine", "твой скор на карте из последнего /rs"),
     ]

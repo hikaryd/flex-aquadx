@@ -331,15 +331,16 @@ def render(inp: TrackResultInput) -> bytes:
                     skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
                 )
         else:
-            # Нет judgement-данных — editorial placeholder вместо нулевых столбцов.
-            placeholder_font = skia.Font(fonts.get("mono"), 14)
-            placeholder = "/recent НЕ ОТДАЁТ JUDGEMENT-ДАННЫЕ  ·  ЗАПРОСИ /playlog?id=N"
-            canvas.drawString(
-                placeholder,
+            # Recent endpoint does not expose judgement breakdown. Keep this area clean instead of
+            # rendering developer-facing placeholders on user cards.
+            _text(
+                canvas,
+                "Detailed judgement data is not available for this recent score.",
                 60,
                 cells_y + 60,
-                placeholder_font,
-                skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
+                20,
+                color=C_TEXT_FAINT,
+                role="ui",
             )
 
         # ════ Bottom section: NOTE ACCURACY (left) + STATS (right) ════
@@ -373,13 +374,14 @@ def render(inp: TrackResultInput) -> bytes:
                     canvas, str(val), 60 + 800, ny + 16, 14, color=C_TEXT_HI, role="mono-bold"
                 )
         else:
-            placeholder_font = skia.Font(fonts.get("mono"), 13)
-            canvas.drawString(
-                "ДАННЫЕ В /playlog?id=N",
+            _text(
+                canvas,
+                "Detailed note-accuracy data is not available for this recent score.",
                 60,
                 notes_y + 22,
-                placeholder_font,
-                skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
+                18,
+                color=C_TEXT_FAINT,
+                role="ui",
             )
 
         # STATS: справа — три блока в столбик. Stride 56, font 26pt —
