@@ -135,6 +135,25 @@ def test_maimai_recent_normalises(client: TestClient) -> None:
     assert plays[0]["music"]["title"] == "Recent Track"
 
 
+def test_maimai_recent_sorts_newest_first(client: TestClient) -> None:
+    _seed_meta()
+    with respx.mock(assert_all_called=False) as r:
+        _mock(
+            r,
+            f"{MAI2}/recent",
+            [
+                {"id": 1, "musicId": 834, "level": 3, "achievement": 990000, "userPlayDate": "2026-05-18 10:00:00.0"},
+                {"id": 2, "musicId": 42, "level": 3, "achievement": 980000, "userPlayDate": "2026-05-18 12:00:00.0"},
+            ],
+        )
+        response = client.get("/v1/players/maisan/maimai/recent?limit=1")
+    assert response.status_code == 200
+    plays = response.json()["data"]
+    assert len(plays) == 1
+    assert plays[0]["music"]["id"] == 42
+    assert plays[0]["user_play_date"] == "2026-05-18 12:00:00.0"
+
+
 def test_maimai_favorites(client: TestClient) -> None:
     _seed_meta()
     with respx.mock(assert_all_called=False) as r:
