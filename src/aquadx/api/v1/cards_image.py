@@ -219,6 +219,21 @@ async def score_card(
         raise NotFoundError(f"No score for {username}: musicId={musicId}, difficulty={difficulty or '*'}")
     play = max(plays, key=lambda p: float(p.achievement or 0))
 
+    # `user-music-from-list` returns the durable best score, but not detailed
+    # judgement/note-type breakdown. The public `recent` endpoint is backed by
+    # the playlog repo and exposes historical playlog rows with those fields, so
+    # `/mine` cards can best-effort attach the closest detailed playlog for the
+    # same chart. We keep achievement/rank from the best score and render
+    # judgements, FAST/LATE and play date from the matching playlog when found.
+    detailed_play = await _matching_playlog_for_score(
+        client=client,
+        username=username,
+        music_id=musicId,
+        difficulty=str(play.difficulty),
+        achievement=float(play.achievement or 0),
+        lookup=lookup,
+    )
+
     summary_raw = await client.get(f"{MAI2_PREFIX}/user-summary", params={"username": username})
     rating = int(summary_raw.get("rating") or 0) if isinstance(summary_raw, dict) else 0
     jacket_url = play.music.jacket if play.music and play.music.jacket else ""
@@ -237,15 +252,21 @@ async def score_card(
         achievement=float(play.achievement),
         rank=str(play.rank),
         rating=rating,
-        max_combo=int(play.max_combo or 0),
-        fast=0,
-        late=0,
+        max_combo=int(play.max_combo or (detailed_play.max_combo if detailed_play else 0) or 0),
+        fast=int((detailed_play.fast if detailed_play else None) or 0),
+        late=int((detailed_play.late if detailed_play else None) or 0),
         deluxe_score=int(play.deluxe_score or 0),
         deluxe_max=int(play.deluxe_score or 0),
         rating_delta=0,
-        judgements=[("CRIT", 0), ("PERFECT", 0), ("GREAT", 0), ("GOOD", 0), ("MISS", 0)],
-        note_accuracy=[("TAP", 1.0, 0), ("HOLD", 1.0, 0), ("SLIDE", 1.0, 0), ("TOUCH", 1.0, 0), ("BREAK", 1.0, 0)],
-        play_date=str(play.user_play_date or play.play_date or ""),
+        judgements=_judgements_for_render(detailed_play or play),
+        note_accuracy=_note_accuracy_for_render(detailed_play or play),
+        play_date=str(
+            (detailed_play.user_play_date if detailed_play else None)
+            or (detailed_play.play_date if detailed_play else None)
+            or play.user_play_date
+            or play.play_date
+            or ""
+        ),
         jacket=jacket,
     )
     etag_payload = inp.__dict__.copy()
@@ -261,6 +282,37 @@ async def score_card(
         etag_payload=etag_payload,
         build_png=_build,
         scale=scale,
+    )
+
+
+async def _matching_playlog_for_score(
+    *,
+    client: AquadxClient,
+    username: str,
+    music_id: int,
+    difficulty: str,
+    achievement: float,
+    lookup: dict[int, MusicMeta],
+) -> object | None:
+    """Find a detailed historical playlog row for a best-score card."""
+    try:
+        raw = await client.get(f"{MAI2_PREFIX}/recent", params={"username": username})
+    except Exception:
+        return None
+    rows = raw if isinstance(raw, list) else []
+    detailed = [
+        p
+        for p in map_recent_plays(rows, music_lookup=lookup)
+        if p.music
+        and p.music.id == music_id
+        and str(p.difficulty).upper() == difficulty.upper()
+        and (p.judgements is not None or p.note_accuracy is not None)
+    ]
+    if not detailed:
+        return None
+    return min(
+        detailed,
+        key=lambda p: (abs(float(p.achievement or 0) - achievement), -float(p.achievement or 0)),
     )
 
 
