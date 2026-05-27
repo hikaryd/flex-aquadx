@@ -192,6 +192,80 @@ def _safe_level_index(difficulty: str, levels: list[float]) -> int:
 
 
 @router.get(
+    "/{username}/maimai/scores/card.png",
+    summary="PNG-карточка конкретного скора по musicId/difficulty",
+    response_class=Response,
+)
+async def score_card(
+    username: str,
+    musicId: int = Query(..., ge=1),
+    difficulty: str | None = Query(None),
+    theme: str = Query("dark", pattern="^(dark|light)$"),
+    scale: int = Query(1, ge=1, le=2),
+    client: AquadxClient = Depends(get_client),
+    lookup: dict[int, MusicMeta] = Depends(music_lookup),
+    cache: Cache = Depends(get_cache),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    raw = await client.post(
+        f"{MAI2_PREFIX}/user-music-from-list",
+        params={"username": username},
+        json=[musicId],
+    )
+    plays = map_recent_plays(raw if isinstance(raw, list) else [], music_lookup=lookup)
+    if difficulty:
+        plays = [p for p in plays if str(p.difficulty).upper() == difficulty.upper()]
+    if not plays:
+        raise NotFoundError(f"No score for {username}: musicId={musicId}, difficulty={difficulty or '*'}")
+    play = max(plays, key=lambda p: float(p.achievement or 0))
+
+    summary_raw = await client.get(f"{MAI2_PREFIX}/user-summary", params={"username": username})
+    rating = int(summary_raw.get("rating") or 0) if isinstance(summary_raw, dict) else 0
+    jacket_url = play.music.jacket if play.music and play.music.jacket else ""
+    jacket = await fetch_jacket(jacket_url, settings=settings, cache=cache) if jacket_url else None
+
+    inp = TrackResultInput(
+        title=(play.music.title if play.music and play.music.title else f"musicId {musicId}"),
+        artist=(play.music.artist if play.music and play.music.artist else ""),
+        difficulty=str(play.difficulty),
+        level=float(
+            play.music.levels[_safe_level_index(str(play.difficulty), play.music.levels)]
+            if (play.music and play.music.levels)
+            else 0.0
+        ),
+        chart_tag="DX",
+        achievement=float(play.achievement),
+        rank=str(play.rank),
+        rating=rating,
+        max_combo=int(play.max_combo or 0),
+        fast=0,
+        late=0,
+        deluxe_score=int(play.deluxe_score or 0),
+        deluxe_max=int(play.deluxe_score or 0),
+        rating_delta=0,
+        judgements=[("CRIT", 0), ("PERFECT", 0), ("GREAT", 0), ("GOOD", 0), ("MISS", 0)],
+        note_accuracy=[("TAP", 1.0, 0), ("HOLD", 1.0, 0), ("SLIDE", 1.0, 0), ("TOUCH", 1.0, 0), ("BREAK", 1.0, 0)],
+        play_date=str(play.user_play_date or play.play_date or ""),
+        jacket=jacket,
+    )
+    etag_payload = inp.__dict__.copy()
+    etag_payload.pop("jacket", None)
+
+    async def _build() -> bytes:
+        return await renderer.run_render(lambda: render_track(inp))
+
+    return await _png_response(
+        cache,
+        settings,
+        endpoint=f"score/{username}/{musicId}/{difficulty or ''}",
+        etag_payload=etag_payload,
+        build_png=_build,
+        theme=theme,
+        scale=scale,
+    )
+
+
+@router.get(
     "/{username}/maimai/rating/card.png",
     summary="PNG-карточка best35/best15 рейтинг-фрейма",
     response_class=Response,
