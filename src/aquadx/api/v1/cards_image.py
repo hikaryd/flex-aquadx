@@ -260,7 +260,6 @@ async def score_card(
         endpoint=f"score/{username}/{musicId}/{difficulty or ''}",
         etag_payload=etag_payload,
         build_png=_build,
-        theme=theme,
         scale=scale,
     )
 
