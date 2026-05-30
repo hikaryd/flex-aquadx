@@ -48,8 +48,8 @@ def _seed_meta() -> None:
 
 def test_track_template_renders_valid_png() -> None:
     inp = TrackResultInput(
-        title="オペラ！スペースオペラ！",
-        artist="ナユタン星人",
+        title="オペラ！スペースオペラ！ / Очень длинное название трека для Telegram portrait карточки",
+        artist="ナユタン星人 / Очень длинный артист / Long Artist Name",
         difficulty="MASTER",
         level=13.3,
         chart_tag="SEGM",
@@ -70,7 +70,7 @@ def test_track_template_renders_valid_png() -> None:
     img = Image.open(BytesIO(png))
     img.verify()
     img2 = Image.open(BytesIO(png))
-    assert img2.size == (1920, 1080)
+    assert img2.size == (1280, 1600)
     assert img2.format == "PNG"
 
 

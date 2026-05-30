@@ -1,4 +1,4 @@
-"""Шаблон TrackResult: рендерит одиночный maimai-скор как PNG 1920×1080."""
+"""Шаблон TrackResult: рендерит одиночный maimai-скор как Telegram-first PNG 1280×1600."""
 
 from __future__ import annotations
 
@@ -17,7 +17,8 @@ from aquadx.render.palette import (
     JUDGEMENT_COLORS,
 )
 
-W, H = 1920, 1080
+# Telegram-first portrait canvas: крупнее на мобильных экранах, чем старый 16:9.
+W, H = 1280, 1600
 
 
 @dataclass(frozen=True)
@@ -185,6 +186,15 @@ def _diff_sticker(canvas: skia.Canvas, x: float, y: float, diff: str, lv: float)
     return float(w)
 
 
+def _ellipsized(font: skia.Font, s: str, max_w: float) -> str:
+    if font.measureText(s) <= max_w:
+        return s
+    ell = "…"
+    while s and font.measureText(s + ell) > max_w:
+        s = s[:-1]
+    return s + ell
+
+
 # ──────────── публичный API ────────────
 
 
@@ -194,235 +204,97 @@ def render(inp: TrackResultInput) -> bytes:
     with surface as canvas:
         _background(canvas)
 
-        # ════ Top eyebrow row + rule ════
-        _eyebrow(canvas, "TRACK RESULT  ·  MAIMAI DX", 60, 56)
-        _eyebrow_right(canvas, inp.play_date or "—", W - 60, 56)
-        _rule(canvas, 60, 76, W - 60)
+        margin = 48.0
+        _eyebrow(canvas, "TRACK RESULT  ·  MAIMAI DX", margin, 56)
+        _eyebrow_right(canvas, inp.play_date or "—", W - margin, 56)
+        _rule(canvas, margin, 78, W - margin)
 
-        # ════ Title + Artist + Difficulty sticker (left column, top) ════
-        title_y = 130
-        title_font_size = 44.0
-        # Если title очень длинный — обрежем по ширине 1100.
-        title_font = skia.Font(fonts.get("cjk-bold"), title_font_size)
-        title_w_max = 1180.0
-        title = inp.title
-        if title_font.measureText(title) > title_w_max:
-            ell = "…"
-            while title and title_font.measureText(title + ell) > title_w_max:
-                title = title[:-1]
-            title = title + ell
-        canvas.drawString(
-            title, 60, title_y, title_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI)
-        )
-        _text(canvas, inp.artist, 60, title_y + 32, 22, color=C_TEXT_DIM, role="cjk")
+        title_font = skia.Font(fonts.get("cjk-bold"), 54)
+        title = _ellipsized(title_font, inp.title, W - 2 * margin)
+        canvas.drawString(title, margin, 150, title_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI))
+        artist_font = skia.Font(fonts.get("cjk"), 24)
+        artist = _ellipsized(artist_font, inp.artist, W - 2 * margin)
+        canvas.drawString(artist, margin, 188, artist_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_DIM))
 
-        # Difficulty sticker + chart_tag.
-        sticker_y = title_y + 64
-        sticker_w = _diff_sticker(canvas, 60, sticker_y, inp.difficulty, inp.level)
-        _text(
-            canvas,
-            inp.chart_tag,
-            60 + sticker_w + 16,
-            sticker_y + 28,
-            16,
-            color=C_ACH_A,
-            role="ui-bold",
-        )
+        sticker_w = _diff_sticker(canvas, margin, 222, inp.difficulty, inp.level)
+        _text(canvas, inp.chart_tag, margin + sticker_w + 18, 250, 18, color=C_ACH_A, role="ui-bold")
 
-        # ════ Hero ACHIEVEMENT (left side, huge) ════
-        ach_text = f"{inp.achievement:.4f}"
-        _eyebrow(canvas, "ACHIEVEMENT", 60, 320)
-        ach_font = skia.Font(fonts.get("display"), 240)
-        canvas.drawString(
-            ach_text,
-            56,
-            548,
-            ach_font,
-            skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
-        )
-        ach_w = float(ach_font.measureText(ach_text))
-        # «%» сразу за числом, мельче, в accent цвет.
-        pct_font = skia.Font(fonts.get("display"), 88)
-        canvas.drawString(
-            "%",
-            56 + ach_w + 8,
-            548,
-            pct_font,
-            skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
-        )
-
-        # ════ Right top: Jacket + Rank label ════
         jacket_size = 360.0
-        jacket_x = W - 60 - jacket_size
-        jacket_y = 110
+        jacket_x = W - margin - jacket_size
+        jacket_y = 298.0
         _jacket_hard(canvas, inp.jacket, jacket_x, jacket_y, jacket_size)
 
-        # «Rank» eyebrow + большой текст RANK слева от jacket — typography как герой.
-        rank_x_right = jacket_x - 32
-        _eyebrow_right(canvas, "RANK", rank_x_right, jacket_y + 30)
-        rank_font = skia.Font(fonts.get("display"), 96)
-        rank_w = rank_font.measureText(inp.rank)
-        canvas.drawString(
-            inp.rank,
-            rank_x_right - rank_w,
-            jacket_y + 130,
-            rank_font,
-            skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
-        )
-        # under rank: «+N RATING» дельта. Показываем только при разумной дельте.
-        # upstream `/recent` иногда отдаёт after_rating как in-session, не профиль —
-        # тогда delta = after_rating - profile_rating уходит в большой минус (артефакт).
+        rank_x = margin
+        _eyebrow(canvas, "RANK", rank_x, 330)
+        rank_font = skia.Font(fonts.get("display"), 118)
+        canvas.drawString(inp.rank, rank_x, 448, rank_font, skia.Paint(AntiAlias=True, Color4f=C_ACH_A))
         if 0 < abs(inp.rating_delta) < 500:
             sign = "+" if inp.rating_delta > 0 else ""
-            delta_str = f"{sign}{inp.rating_delta} RATING"
-            delta_font = skia.Font(fonts.get("mono-bold"), 18)
-            dw = delta_font.measureText(delta_str)
-            canvas.drawString(
-                delta_str,
-                rank_x_right - dw,
-                jacket_y + 170,
-                delta_font,
-                skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
-            )
+            _text(canvas, f"{sign}{inp.rating_delta} RATING", rank_x, 492, 28, color=C_ACH_A, role="mono-bold")
 
-        # ════ Middle rule + section header ════
-        section_y = 620
-        _rule(canvas, 60, section_y, W - 60)
-        _eyebrow(canvas, "JUDGEMENTS", 60, section_y + 26)
-        _eyebrow_right(canvas, "BREAKDOWN", W - 60, section_y + 26)
-
-        # ════ Judgements: 5 cells horizontal table ════
-        # 2px accent indicator — НАД лейблом (не за ним). Eyebrow ниже.
-        total = sum(v for _, v in inp.judgements)
-        cells_y = section_y + 56
-        cells_h = 110.0
-        if total > 0:
-            cell_count = max(len(inp.judgements), 1)
-            cell_w = (W - 120) / cell_count
-            for i, (lbl, val) in enumerate(inp.judgements):
-                cx = 60 + i * cell_w
-                color = JUDGEMENT_COLORS.get(lbl, C_TEXT_FAINT)
-                if i > 0:
-                    _v_rule(canvas, cx, cells_y, cells_y + cells_h, alpha=0.08)
-                # 2px accent indicator вверху ячейки (над лейблом, не за ним).
-                canvas.drawRect(
-                    skia.Rect.MakeXYWH(cx + 16, cells_y + 4, 28, 2),
-                    skia.Paint(AntiAlias=True, Color4f=color),
-                )
-                # Eyebrow label чуть ниже indicator.
-                _eyebrow(canvas, lbl, cx + 16, cells_y + 26)
-                # Big value.
-                val_font = skia.Font(fonts.get("display"), 52)
-                canvas.drawString(
-                    str(val),
-                    cx + 16,
-                    cells_y + 78,
-                    val_font,
-                    skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
-                )
-                # Percentage под value.
-                pct = (val / total) * 100
-                pct_font = skia.Font(fonts.get("mono"), 12)
-                canvas.drawString(
-                    f"{pct:.1f}%",
-                    cx + 16,
-                    cells_y + 98,
-                    pct_font,
-                    skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT),
-                )
-        else:
-            # Recent endpoint does not expose judgement breakdown. Keep this area clean instead of
-            # rendering developer-facing placeholders on user cards.
-            _text(
-                canvas,
-                "Detailed judgement data is not available for this recent score.",
-                60,
-                cells_y + 60,
-                20,
-                color=C_TEXT_FAINT,
-                role="ui",
-            )
-
-        # ════ Bottom section: NOTE ACCURACY (left) + STATS (right) ════
-        bot_y = cells_y + cells_h + 36
-        _rule(canvas, 60, bot_y, W - 60)
-        _eyebrow(canvas, "NOTE ACCURACY", 60, bot_y + 26)
-        _eyebrow(canvas, "STATS", 1180, bot_y + 26)
-
-        notes_y = bot_y + 50
-        has_accuracy = any(val > 0 for _, _, val in inp.note_accuracy)
-        if has_accuracy:
-            for i, (lbl, frac, val) in enumerate(inp.note_accuracy):
-                ny = notes_y + i * 30
-                canvas.drawString(
-                    lbl,
-                    60,
-                    ny + 14,
-                    skia.Font(fonts.get("mono"), 13),
-                    skia.Paint(AntiAlias=True, Color4f=C_TEXT_DIM),
-                )
-                bar_x, bar_w, bar_h = 160, 600, 5
-                canvas.drawRect(
-                    skia.Rect.MakeXYWH(bar_x, ny + 8, bar_w, bar_h),
-                    skia.Paint(AntiAlias=True, Color4f=skia.Color4f(1, 1, 1, 0.06)),
-                )
-                canvas.drawRect(
-                    skia.Rect.MakeXYWH(bar_x, ny + 8, max(0.0, min(1.0, frac)) * bar_w, bar_h),
-                    skia.Paint(AntiAlias=True, Color4f=C_ACH_A),
-                )
-                _text_right(
-                    canvas, str(val), 60 + 800, ny + 16, 14, color=C_TEXT_HI, role="mono-bold"
-                )
-        else:
-            _text(
-                canvas,
-                "Detailed note-accuracy data is not available for this recent score.",
-                60,
-                notes_y + 22,
-                18,
-                color=C_TEXT_FAINT,
-                role="ui",
-            )
-
-        # STATS: справа — три блока в столбик. Stride 56, font 26pt —
-        # умещаются все три значения между bot_y и footer-rule (H-50),
-        # включая длинное DELUXE «1333/1333».
-        stats_x = 1180
-        stats_top_y = bot_y + 46
         stats = (
             ("RATING", f"{inp.rating}", C_ACH_A),
             ("MAX COMBO", f"{inp.max_combo}", C_TEXT_HI),
             ("DELUXE", f"{inp.deluxe_score}/{inp.deluxe_max}", C_TEXT_HI),
         )
+        stats_y = 548
         for i, (stat_lbl, stat_val, stat_col) in enumerate(stats):
-            sy = stats_top_y + i * 56
-            _eyebrow(canvas, stat_lbl, stats_x, sy)
-            val_font = skia.Font(fonts.get("mono-bold"), 26)
-            canvas.drawString(
-                stat_val,
-                stats_x,
-                sy + 30,
-                val_font,
-                skia.Paint(AntiAlias=True, Color4f=stat_col),
-            )
+            sx = margin + i * 205
+            _eyebrow(canvas, stat_lbl, sx, stats_y)
+            _text(canvas, stat_val, sx, stats_y + 40, 32, color=stat_col, role="mono-bold")
 
-        # FAST/LATE компактный hint справа от STATS — только если есть данные.
         if inp.fast > 0 or inp.late > 0:
-            fl_x = 1620
-            _eyebrow(canvas, "FAST / LATE", fl_x, stats_top_y)
-            fl_font = skia.Font(fonts.get("mono-bold"), 28)
-            canvas.drawString(
-                f"{inp.fast} · {inp.late}",
-                fl_x,
-                stats_top_y + 36,
-                fl_font,
-                skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI),
-            )
+            _eyebrow(canvas, "FAST / LATE", margin, 642)
+            _text(canvas, f"{inp.fast} · {inp.late}", margin, 686, 34, color=C_TEXT_HI, role="mono-bold")
 
-        # ════ Footer rule + brand ════
-        _rule(canvas, 60, H - 50, W - 60)
-        _eyebrow(canvas, inp.brand, 60, H - 28)
-        _eyebrow_right(canvas, f"#{inp.rating}  RATING", W - 60, H - 28)
+        _rule(canvas, margin, 722, W - margin)
+        _eyebrow(canvas, "ACHIEVEMENT", margin, 766)
+        ach_text = f"{inp.achievement:.4f}"
+        ach_font = skia.Font(fonts.get("display"), 172)
+        canvas.drawString(ach_text, margin - 4, 930, ach_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI))
+        pct_x = margin - 4 + ach_font.measureText(ach_text) + 8
+        canvas.drawString("%", pct_x, 930, skia.Font(fonts.get("display"), 70), skia.Paint(AntiAlias=True, Color4f=C_ACH_A))
+
+        section_y = 1000
+        _rule(canvas, margin, section_y, W - margin)
+        _eyebrow(canvas, "JUDGEMENTS", margin, section_y + 36)
+        total = sum(v for _, v in inp.judgements)
+        cells_y = section_y + 70
+        if total > 0:
+            cell_count = max(len(inp.judgements), 1)
+            cell_w = (W - 2 * margin) / cell_count
+            for i, (lbl, val) in enumerate(inp.judgements):
+                cx = margin + i * cell_w
+                color = JUDGEMENT_COLORS.get(lbl, C_TEXT_FAINT)
+                if i > 0:
+                    _v_rule(canvas, cx, cells_y, cells_y + 128, alpha=0.08)
+                canvas.drawRect(skia.Rect.MakeXYWH(cx + 14, cells_y + 2, 30, 3), skia.Paint(AntiAlias=True, Color4f=color))
+                _eyebrow(canvas, lbl, cx + 14, cells_y + 32)
+                _text(canvas, str(val), cx + 14, cells_y + 84, 44, color=C_TEXT_HI, role="display")
+                _text(canvas, f"{(val / total) * 100:.1f}%", cx + 14, cells_y + 116, 15, color=C_TEXT_FAINT, role="mono")
+        else:
+            _text(canvas, "Detailed judgement data is not available.", margin, cells_y + 62, 24, color=C_TEXT_FAINT, role="ui")
+
+        bot_y = 1230
+        _rule(canvas, margin, bot_y, W - margin)
+        _eyebrow(canvas, "NOTE ACCURACY", margin, bot_y + 36)
+        notes_y = bot_y + 72
+        has_accuracy = any(val > 0 for _, _, val in inp.note_accuracy)
+        if has_accuracy:
+            for i, (lbl, frac, val) in enumerate(inp.note_accuracy[:5]):
+                ny = notes_y + i * 48
+                _text(canvas, lbl, margin, ny + 18, 18, color=C_TEXT_DIM, role="mono")
+                bar_x, bar_w, bar_h = margin + 120, W - 2 * margin - 230, 8
+                canvas.drawRect(skia.Rect.MakeXYWH(bar_x, ny + 9, bar_w, bar_h), skia.Paint(AntiAlias=True, Color4f=skia.Color4f(1, 1, 1, 0.06)))
+                canvas.drawRect(skia.Rect.MakeXYWH(bar_x, ny + 9, max(0.0, min(1.0, frac)) * bar_w, bar_h), skia.Paint(AntiAlias=True, Color4f=C_ACH_A))
+                _text_right(canvas, str(val), W - margin, ny + 20, 18, color=C_TEXT_HI, role="mono-bold")
+        else:
+            _text(canvas, "Detailed note-accuracy data is not available.", margin, notes_y + 30, 24, color=C_TEXT_FAINT, role="ui")
+
+        _rule(canvas, margin, H - 58, W - margin)
+        _eyebrow(canvas, inp.brand, margin, H - 34)
+        _eyebrow_right(canvas, f"#{inp.rating}  RATING", W - margin, H - 34)
 
     image = surface.makeImageSnapshot()
     return bytes(image.encodeToData(skia.kPNG, 95))
+

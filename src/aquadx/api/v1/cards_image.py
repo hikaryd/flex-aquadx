@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -17,6 +18,8 @@ from aquadx.models.domain import MusicMeta
 from aquadx.render import renderer
 from aquadx.render.cache_keys import compute_etag, image_cache_key
 from aquadx.render.jacket_loader import fetch_jacket, fetch_jackets
+from aquadx.render.templates.leaderboard import LeaderboardEntry, LeaderboardInput
+from aquadx.render.templates.leaderboard import render as render_leaderboard
 from aquadx.render.templates.rating_frame import RatingFrameInput, RatingItem
 from aquadx.render.templates.rating_frame import render as render_rating
 from aquadx.render.templates.track_result import TrackResultInput
@@ -389,6 +392,91 @@ async def rating_card(
         cache,
         settings,
         endpoint=f"rating/{username}",
+        etag_payload=etag_payload,
+        build_png=_build,
+        scale=scale,
+    )
+
+
+@router.get(
+    "/-/maimai/leaderboard/card.png",
+    summary="PNG-лидерборд нескольких maimai-профилей",
+    response_class=Response,
+)
+async def leaderboard_card(
+    usernames: str = Query(
+        ...,
+        min_length=1,
+        max_length=512,
+        description="Comma-separated AquaDX usernames, max 20 unique values",
+    ),
+    title: str = Query("MaiMai leaderboard", max_length=80),
+    scale: int = Query(1, ge=1, le=2),
+    client: AquadxClient = Depends(get_client),
+    lookup: dict[int, MusicMeta] = Depends(music_lookup),
+    cache: Cache = Depends(get_cache),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    names: list[str] = []
+    seen: set[str] = set()
+    for raw_name in usernames.split(","):
+        name = raw_name.strip()
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            names.append(name)
+            if len(names) >= 20:
+                break
+    if not names:
+        raise NotFoundError("No usernames for leaderboard")
+
+    gate = asyncio.Semaphore(4)
+
+    async def _load_one(name: str) -> LeaderboardEntry | None:
+        try:
+            async with gate:
+                summary_raw, rating_raw = await asyncio.gather(
+                    client.get(f"{MAI2_PREFIX}/user-summary", params={"username": name}),
+                    client.get(f"{MAI2_PREFIX}/user-rating", params={"username": name}),
+                )
+        except Exception:
+            return None
+        rating = int(summary_raw.get("rating") or 0) if isinstance(summary_raw, dict) else 0
+        b35_sum = 0
+        b15_sum = 0
+        best_count = 0
+        if isinstance(rating_raw, dict):
+            frame = map_rating_frame(rating_raw, music_lookup=lookup)
+            b35_sum = sum(int(t.rating_contribution or 0) for t in frame.best35)
+            b15_sum = sum(int(t.rating_contribution or 0) for t in frame.best15)
+            best_count = len(frame.best35) + len(frame.best15)
+        return LeaderboardEntry(username=name, rating=rating, rank=0, b35_sum=b35_sum, b15_sum=b15_sum, best_count=best_count)
+
+    loaded = await asyncio.gather(*(_load_one(name) for name in names))
+    entries = sorted((entry for entry in loaded if entry is not None), key=lambda e: e.rating, reverse=True)
+    if not entries:
+        raise NotFoundError("No valid profiles for leaderboard")
+    ranked = [
+        LeaderboardEntry(
+            username=entry.username,
+            rating=entry.rating,
+            rank=i + 1,
+            b35_sum=entry.b35_sum,
+            b15_sum=entry.b15_sum,
+            best_count=entry.best_count,
+        )
+        for i, entry in enumerate(entries)
+    ]
+    inp = LeaderboardInput(title=title, entries=ranked)
+    etag_payload = {"title": title, "entries": [entry.__dict__ for entry in ranked]}
+
+    async def _build() -> bytes:
+        return await renderer.run_render(lambda: render_leaderboard(inp))
+
+    return await _png_response(
+        cache,
+        settings,
+        endpoint="leaderboard/" + ",".join(names),
         etag_payload=etag_payload,
         build_png=_build,
         scale=scale,
