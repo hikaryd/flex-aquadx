@@ -13,16 +13,18 @@ import skia
 C_BG = skia.ColorSetRGB(0x0A, 0x0B, 0x10)
 C_BG_TOP = C_BG
 
-# Поверхности карточек: тонкие dark-glass плитки.
-C_SURFACE = skia.Color4f(1.0, 1.0, 1.0, 0.035)
-C_SURFACE_HI = skia.Color4f(1.0, 1.0, 1.0, 0.055)
-C_GLASS_BORDER = skia.Color4f(1.0, 1.0, 1.0, 0.07)
-C_DIVIDER = skia.Color4f(1.0, 1.0, 1.0, 0.06)
+# Поверхности карточек: тонкие dark-glass плитки, но без мутного
+# "серое на сером" — Telegram сильно пережимает тёмные полутона.
+C_SURFACE = skia.Color4f(1.0, 1.0, 1.0, 0.050)
+C_SURFACE_HI = skia.Color4f(1.0, 1.0, 1.0, 0.075)
+C_GLASS_BORDER = skia.Color4f(1.0, 1.0, 1.0, 0.13)
+C_DIVIDER = skia.Color4f(1.0, 1.0, 1.0, 0.11)
 
-# Иерархия текста: pure white → muted.
+# Иерархия текста: pure white → readable muted.
+# Secondary text must stay readable after Telegram downscaling/compression.
 C_TEXT_HI = skia.Color4f(0.98, 0.98, 1.0, 1.0)
-C_TEXT_DIM = skia.Color4f(0.66, 0.68, 0.74, 1.0)
-C_TEXT_FAINT = skia.Color4f(0.42, 0.44, 0.50, 1.0)
+C_TEXT_DIM = skia.Color4f(0.83, 0.85, 0.90, 1.0)
+C_TEXT_FAINT = skia.Color4f(0.65, 0.68, 0.75, 1.0)
 
 # Единственный акцент — холодный мятно-лайм. Используется ТОЛЬКО для
 # ключевых чисел (rating, achievement, contribution). Не для декора.
