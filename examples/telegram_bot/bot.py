@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import httpx
 from telegram import BotCommand, Update
@@ -60,6 +60,17 @@ def init_db() -> None:
               source_username text not null,
               updated_at text not null default current_timestamp
             );
+            create table if not exists message_score_context (
+              chat_id integer not null,
+              message_id integer not null,
+              music_id integer not null,
+              difficulty text not null,
+              title text not null,
+              artist text not null,
+              source_username text not null,
+              updated_at text not null default current_timestamp,
+              primary key(chat_id, message_id)
+            );
             """
         )
         conn.commit()
@@ -81,6 +92,20 @@ def get_profile_local(tg_user_id: int) -> str | None:
         return str(row[0]) if row else None
 
 
+def get_all_profiles_local() -> list[str]:
+    with closing(db()) as conn:
+        rows = conn.execute("select aquadx_username from profiles order by updated_at desc").fetchall()
+    out: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        username = str(row[0]).strip()
+        key = username.casefold()
+        if username and key not in seen:
+            seen.add(key)
+            out.append(username)
+    return out
+
+
 def set_last_map_local(chat_id: int, last: LastMap) -> None:
     with closing(db()) as conn:
         conn.execute(
@@ -99,6 +124,28 @@ def get_last_map_local(chat_id: int) -> LastMap | None:
             return None
         return LastMap(int(row["music_id"]), str(row["difficulty"]), str(row["title"]), str(row["artist"]), str(row["source_username"]))
 
+
+def set_message_map_local(chat_id: int, message_id: int, last: LastMap) -> None:
+    with closing(db()) as conn:
+        conn.execute(
+            "insert into message_score_context(chat_id, message_id, music_id, difficulty, title, artist, source_username) "
+            "values(?, ?, ?, ?, ?, ?, ?) "
+            "on conflict(chat_id, message_id) do update set music_id=excluded.music_id, difficulty=excluded.difficulty, "
+            "title=excluded.title, artist=excluded.artist, source_username=excluded.source_username, updated_at=current_timestamp",
+            (chat_id, message_id, last.music_id, last.difficulty, last.title, last.artist, last.source_username),
+        )
+        conn.commit()
+
+
+def get_message_map_local(chat_id: int, message_id: int) -> LastMap | None:
+    with closing(db()) as conn:
+        row = conn.execute(
+            "select * from message_score_context where chat_id=? and message_id=?",
+            (chat_id, message_id),
+        ).fetchone()
+        if not row:
+            return None
+        return LastMap(int(row["music_id"]), str(row["difficulty"]), str(row["title"]), str(row["artist"]), str(row["source_username"]))
 
 
 def storage_enabled() -> bool:
@@ -167,12 +214,26 @@ def last_map_from_context(value: dict[str, Any] | None) -> LastMap | None:
 
 async def set_last_map(chat_id: int, message_id: int, last: LastMap) -> None:
     set_last_map_local(chat_id, last)
+    set_message_map_local(chat_id, message_id, last)
     context_payload = last_map_to_context(last)
     await storage_request("PUT", f"/score-context/{chat_id}/{message_id}", context_payload)
     await storage_request("PUT", f"/last-target/chat/{chat_id}", {"chat_id": chat_id, "message_id": message_id})
 
 
-async def get_last_map(chat_id: int) -> LastMap | None:
+async def get_message_map(chat_id: int, message_id: int) -> LastMap | None:
+    context = await storage_request("GET", f"/score-context/{chat_id}/{message_id}")
+    last = last_map_from_context((context or {}).get("context") if isinstance(context, dict) else None)
+    if last:
+        set_message_map_local(chat_id, message_id, last)
+        return last
+    return get_message_map_local(chat_id, message_id)
+
+
+async def get_last_map(chat_id: int, reply_to_message_id: int | None = None) -> LastMap | None:
+    if reply_to_message_id is not None:
+        last = await get_message_map(chat_id, reply_to_message_id)
+        if last:
+            return last
     target = await storage_request("GET", f"/last-target/chat/{chat_id}")
     target_payload = (target or {}).get("target") if isinstance(target, dict) else None
     if isinstance(target_payload, dict) and target_payload.get("message_id") is not None:
@@ -221,8 +282,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Команды:\n"
         "`/profile username` — привязать/посмотреть профиль\n"
         "`/rs [username] [index]` — карточка последней игры\n"
-        "`/mine` — твой скор на карте из последнего `/rs` в этом чате"
+        "`/mine` — твой скор на карте из последнего `/rs` в этом чате\n"
+        "`/leaderboard` или `/lb` — общий лидерборд привязанных профилей"
     )
+
+
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    usernames = get_all_profiles_local()
+    current = await get_profile(update.effective_user.id)
+    if current and current.casefold() not in {u.casefold() for u in usernames}:
+        usernames.insert(0, current)
+    if not usernames:
+        await update.message.reply_text("В базе ещё нет привязанных профилей. Используй `/profile username`.")
+        return
+
+    await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
+    title = update.effective_chat.title or update.effective_user.full_name or "MaiMai leaderboard"
+    query = urlencode({"usernames": ",".join(usernames), "title": title, "scale": "1"})
+    try:
+        png = await api_png(f"/v1/players/-/maimai/leaderboard/card.png?{query}")
+    except httpx.HTTPStatusError as e:
+        await update.message.reply_text(f"AquaDX не смог собрать leaderboard ({e.response.status_code}).")
+        return
+    await update.message.reply_photo(photo=BytesIO(png), caption=f"Leaderboard · {len(usernames)} profiles")
 
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -288,7 +370,8 @@ async def rs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    last = await get_last_map(update.effective_chat.id)
+    reply_to_message_id = update.message.reply_to_message.message_id if update.message.reply_to_message else None
+    last = await get_last_map(update.effective_chat.id, reply_to_message_id)
     if not last:
         await update.message.reply_text("Сначала в этом чате надо вызвать `/rs`, чтобы выбрать карту.")
         return
@@ -316,6 +399,8 @@ async def post_init(app: Application) -> None:
         BotCommand("profile", "показать B50-профиль или привязать username"),
         BotCommand("rs", "показать recent score: /rs [username] [index]"),
         BotCommand("mine", "твой скор на карте из последнего /rs"),
+        BotCommand("leaderboard", "общий лидерборд привязанных профилей"),
+        BotCommand("lb", "короткая команда лидерборда"),
     ]
     await app.bot.set_my_commands(commands)
     await app.bot.set_my_commands(commands, scope={"type": BotCommandScopeType.ALL_GROUP_CHATS})
@@ -334,6 +419,8 @@ def main() -> None:
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("rs", rs))
     app.add_handler(CommandHandler("mine", mine))
+    app.add_handler(CommandHandler("leaderboard", leaderboard))
+    app.add_handler(CommandHandler("lb", leaderboard))
     app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
 

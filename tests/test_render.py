@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from PIL import Image
 
+from aquadx.api.v1.cards_image import _previous_after_rating
 from aquadx.cache.memory import TTLCache
 from aquadx.meta.loader import get_loader, reset_loader
 from aquadx.models.domain import MusicMeta
@@ -48,8 +49,8 @@ def _seed_meta() -> None:
 
 def test_track_template_renders_valid_png() -> None:
     inp = TrackResultInput(
-        title="オペラ！スペースオペラ！",
-        artist="ナユタン星人",
+        title="オペラ！スペースオペラ！ / Очень длинное название трека для Telegram portrait карточки",
+        artist="ナユタン星人 / Очень длинный артист / Long Artist Name",
         difficulty="MASTER",
         level=13.3,
         chart_tag="SEGM",
@@ -70,7 +71,7 @@ def test_track_template_renders_valid_png() -> None:
     img = Image.open(BytesIO(png))
     img.verify()
     img2 = Image.open(BytesIO(png))
-    assert img2.size == (1920, 1080)
+    assert img2.size == (1280, 1600)
     assert img2.format == "PNG"
 
 
@@ -206,6 +207,19 @@ def test_recent_card_cache_hit_on_second_call(client: TestClient) -> None:
     assert first.headers["x-cache"] == "MISS"
     assert second.headers["x-cache"] == "HIT"
     assert first.content == second.content
+
+
+def test_recent_card_rating_delta_uses_previous_recent_after_rating() -> None:
+    class Play:
+        def __init__(self, after_rating: int | None) -> None:
+            self.after_rating = after_rating
+
+    plays = [Play(15012), Play(15000), Play(14996)]
+
+    assert _previous_after_rating(plays, 0) == 15000
+    assert _previous_after_rating(plays, 1) == 14996
+    assert _previous_after_rating(plays, 2) is None
+
 
 
 def test_rating_card_endpoint_returns_png(client: TestClient) -> None:
