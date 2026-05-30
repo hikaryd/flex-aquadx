@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from PIL import Image
 
+from aquadx.api.v1.cards_image import _previous_after_rating
 from aquadx.cache.memory import TTLCache
 from aquadx.meta.loader import get_loader, reset_loader
 from aquadx.models.domain import MusicMeta
@@ -206,6 +207,19 @@ def test_recent_card_cache_hit_on_second_call(client: TestClient) -> None:
     assert first.headers["x-cache"] == "MISS"
     assert second.headers["x-cache"] == "HIT"
     assert first.content == second.content
+
+
+def test_recent_card_rating_delta_uses_previous_recent_after_rating() -> None:
+    class Play:
+        def __init__(self, after_rating: int | None) -> None:
+            self.after_rating = after_rating
+
+    plays = [Play(15012), Play(15000), Play(14996)]
+
+    assert _previous_after_rating(plays, 0) == 15000
+    assert _previous_after_rating(plays, 1) == 14996
+    assert _previous_after_rating(plays, 2) is None
+
 
 
 def test_rating_card_endpoint_returns_png(client: TestClient) -> None:

@@ -195,6 +195,28 @@ def _ellipsized(font: skia.Font, s: str, max_w: float) -> str:
     return s + ell
 
 
+def _rating_delta_badge(canvas: skia.Canvas, x: float, y: float, delta: int) -> None:
+    """Large high-priority rating delta badge for Telegram mobile readability."""
+    if delta == 0 or abs(delta) >= 500:
+        return
+    sign = "+" if delta > 0 else ""
+    value = f"{sign}{delta}"
+    label = "RATING"
+    w, h = 304.0, 96.0
+    rect = skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(x, y, w, h), 18, 18)
+    fill = skia.Paint(AntiAlias=True, Color4f=skia.Color4f(0.71, 1.0, 0.42, 0.13))
+    stroke = skia.Paint(
+        AntiAlias=True,
+        Style=skia.Paint.kStroke_Style,
+        StrokeWidth=1.5,
+        Color4f=skia.Color4f(0.71, 1.0, 0.42, 0.38),
+    )
+    canvas.drawRRect(rect, fill)
+    canvas.drawRRect(rect, stroke)
+    _eyebrow(canvas, label, x + 22, y + 31, size=13)
+    _text(canvas, value, x + 20, y + 78, 50, color=C_ACH_A, role="display")
+
+
 # ──────────── публичный API ────────────
 
 
@@ -228,34 +250,32 @@ def render(inp: TrackResultInput) -> bytes:
         _eyebrow(canvas, "RANK", rank_x, 330)
         rank_font = skia.Font(fonts.get("display"), 118)
         canvas.drawString(inp.rank, rank_x, 448, rank_font, skia.Paint(AntiAlias=True, Color4f=C_ACH_A))
-        if 0 < abs(inp.rating_delta) < 500:
-            sign = "+" if inp.rating_delta > 0 else ""
-            _text(canvas, f"{sign}{inp.rating_delta} RATING", rank_x, 492, 28, color=C_ACH_A, role="mono-bold")
+        _rating_delta_badge(canvas, rank_x, 472, inp.rating_delta)
 
         stats = (
             ("RATING", f"{inp.rating}", C_ACH_A),
             ("MAX COMBO", f"{inp.max_combo}", C_TEXT_HI),
             ("DELUXE", f"{inp.deluxe_score}/{inp.deluxe_max}", C_TEXT_HI),
         )
-        stats_y = 548
+        stats_y = 606
         for i, (stat_lbl, stat_val, stat_col) in enumerate(stats):
             sx = margin + i * 205
             _eyebrow(canvas, stat_lbl, sx, stats_y)
             _text(canvas, stat_val, sx, stats_y + 40, 32, color=stat_col, role="mono-bold")
 
         if inp.fast > 0 or inp.late > 0:
-            _eyebrow(canvas, "FAST / LATE", margin, 642)
-            _text(canvas, f"{inp.fast} · {inp.late}", margin, 686, 34, color=C_TEXT_HI, role="mono-bold")
+            _eyebrow(canvas, "FAST / LATE", margin, 700)
+            _text(canvas, f"{inp.fast} · {inp.late}", margin, 744, 34, color=C_TEXT_HI, role="mono-bold")
 
-        _rule(canvas, margin, 722, W - margin)
-        _eyebrow(canvas, "ACHIEVEMENT", margin, 766)
+        _rule(canvas, margin, 780, W - margin)
+        _eyebrow(canvas, "ACHIEVEMENT", margin, 824)
         ach_text = f"{inp.achievement:.4f}"
         ach_font = skia.Font(fonts.get("display"), 172)
-        canvas.drawString(ach_text, margin - 4, 930, ach_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI))
+        canvas.drawString(ach_text, margin - 4, 988, ach_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI))
         pct_x = margin - 4 + ach_font.measureText(ach_text) + 8
-        canvas.drawString("%", pct_x, 930, skia.Font(fonts.get("display"), 70), skia.Paint(AntiAlias=True, Color4f=C_ACH_A))
+        canvas.drawString("%", pct_x, 988, skia.Font(fonts.get("display"), 70), skia.Paint(AntiAlias=True, Color4f=C_ACH_A))
 
-        section_y = 1000
+        section_y = 1058
         _rule(canvas, margin, section_y, W - margin)
         _eyebrow(canvas, "JUDGEMENTS", margin, section_y + 36)
         total = sum(v for _, v in inp.judgements)
@@ -275,14 +295,14 @@ def render(inp: TrackResultInput) -> bytes:
         else:
             _text(canvas, "Detailed judgement data is not available.", margin, cells_y + 62, 24, color=C_TEXT_FAINT, role="ui")
 
-        bot_y = 1230
+        bot_y = 1288
         _rule(canvas, margin, bot_y, W - margin)
         _eyebrow(canvas, "NOTE ACCURACY", margin, bot_y + 36)
         notes_y = bot_y + 72
         has_accuracy = any(val > 0 for _, _, val in inp.note_accuracy)
         if has_accuracy:
             for i, (lbl, frac, val) in enumerate(inp.note_accuracy[:5]):
-                ny = notes_y + i * 48
+                ny = notes_y + i * 38
                 _text(canvas, lbl, margin, ny + 18, 18, color=C_TEXT_DIM, role="mono")
                 bar_x, bar_w, bar_h = margin + 120, W - 2 * margin - 230, 8
                 canvas.drawRect(skia.Rect.MakeXYWH(bar_x, ny + 9, bar_w, bar_h), skia.Paint(AntiAlias=True, Color4f=skia.Color4f(1, 1, 1, 0.06)))

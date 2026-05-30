@@ -84,6 +84,7 @@ async def recent_card(
     if index >= len(plays):
         raise NotFoundError(f"Recent play index out of range: {index} >= {len(plays)}")
     play = plays[index]
+    previous_rating = _previous_after_rating(plays, index)
 
     # Деталь профиля — для шапки. Best-effort: при сбое — None.
     summary_raw = await client.get(f"{MAI2_PREFIX}/user-summary", params={"username": username})
@@ -116,7 +117,7 @@ async def recent_card(
         late=int(play.late or 0),
         deluxe_score=int(play.deluxe_score or 0),
         deluxe_max=int(play.deluxe_score or 0),
-        rating_delta=int(play.after_rating or 0) - rating if play.after_rating else 0,
+        rating_delta=(int(play.after_rating) - previous_rating if play.after_rating and previous_rating is not None else 0),
         judgements=_judgements_for_render(play),
         note_accuracy=_note_accuracy_for_render(play),
         play_date=str(play.user_play_date or play.play_date or ""),
@@ -137,6 +138,21 @@ async def recent_card(
         build_png=_build,
         scale=scale,
     )
+
+
+def _previous_after_rating(plays: list[object], index: int) -> int | None:
+    """Rating before this play: next older recent row's after_rating.
+
+    `map_recent_plays` sorts newest-first, so for plays[index] the row at
+    index+1 is the immediately previous play available in the recent window.
+    The profile summary usually equals the latest afterRating, so subtracting
+    from summary hides `/rs` rating gains for index=0.
+    """
+    for older in plays[index + 1 :]:
+        after_rating = getattr(older, "after_rating", None)
+        if after_rating is not None:
+            return int(after_rating)
+    return None
 
 
 def _judgements_for_render(play: object) -> list[tuple[str, int]]:
