@@ -412,7 +412,7 @@ async def rs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except httpx.HTTPStatusError as e:
         await update.message.reply_text(f"AquaDX вернул ошибку {e.response.status_code} для `{username}`.")
         return
-    caption = f"`{username}` · {title} [{diff}]\nScore + leaderboard по этой карте. `/mine` покажет твой скор."
+    caption = f"`{username}` · {title}\nScore + leaderboard по этой карте. `/mine` покажет твой скор."
     sent_messages = await update.message.reply_media_group(
         media=[
             InputMediaPhoto(media=BytesIO(score_png), caption=caption),
@@ -440,11 +440,11 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
-            await update.message.reply_text(f"У `{username}` не нашёл скора на {last.title} [{last.difficulty}].")
+            await update.message.reply_text(f"У `{username}` не нашёл скора на {last.title}.")
         else:
             await update.message.reply_text(f"AquaDX вернул ошибку {e.response.status_code} для `{username}`.")
         return
-    await update.message.reply_photo(photo=BytesIO(png), caption=f"`{username}` на {last.title} [{last.difficulty}]")
+    await update.message.reply_photo(photo=BytesIO(png), caption=f"`{username}` на {last.title}")
 
 
 async def post_init(app: Application) -> None:
