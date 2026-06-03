@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from PIL import Image
 
-from aquadx.api.v1.cards_image import _previous_after_rating
+from aquadx.api.v1.cards_image import _combo_badge, _previous_after_rating
 from aquadx.cache.memory import TTLCache
 from aquadx.meta.loader import get_loader, reset_loader
 from aquadx.models.domain import MusicMeta
@@ -243,6 +243,26 @@ def test_rating_card_endpoint_returns_png(client: TestClient) -> None:
     img.verify()
     img2 = Image.open(BytesIO(response.content))
     assert img2.size == (1920, 1080)
+
+
+def test_combo_badge_infers_from_judgements() -> None:
+    class Judgements:
+        def __init__(self, perfect: int, great: int, good: int, miss: int) -> None:
+            self.perfect = perfect
+            self.great = great
+            self.good = good
+            self.miss = miss
+
+    class Play:
+        def __init__(self, judgements: Judgements) -> None:
+            self.judgements = judgements
+            self.is_all_perfect = False
+            self.is_full_combo = False
+
+    assert _combo_badge(Play(Judgements(perfect=144, great=7, good=0, miss=0))) == "FC+"
+    assert _combo_badge(Play(Judgements(perfect=144, great=7, good=1, miss=0))) == "FC"
+    assert _combo_badge(Play(Judgements(perfect=144, great=0, good=0, miss=0))) == "AP"
+    assert _combo_badge(Play(Judgements(perfect=0, great=0, good=0, miss=0))) == "AP+"
 
 
 def test_score_leaderboard_card_endpoint_returns_png(client: TestClient) -> None:

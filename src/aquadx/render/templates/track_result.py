@@ -39,6 +39,7 @@ class TrackResultInput:
     deluxe_score: int  # 2711
     deluxe_max: int  # 2711
     rating_delta: int  # +12
+    combo_badge: str = ""  # "FC", "FC+", "AP", "AP+"
     judgements: list[tuple[str, int]] = field(
         default_factory=lambda: [
             ("CRIT", 0),
@@ -217,6 +218,26 @@ def _rating_delta_badge(canvas: skia.Canvas, x: float, y: float, delta: int) -> 
     _text(canvas, value, x + 20, y + 78, 50, color=C_ACH_A, role="display")
 
 
+def _combo_badge(canvas: skia.Canvas, text: str, x: float, y: float) -> None:
+    """High-visibility FC/AP badge shown next to the rank."""
+    if not text:
+        return
+    is_ap = text.startswith("AP")
+    font = skia.Font(fonts.get("display"), 44)
+    label_font = skia.Font(fonts.get("ui-bold"), 12)
+    w, h = max(126.0, font.measureText(text) + 42), 76.0
+    rect = skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(x, y, w, h), 18, 18)
+    fill = skia.Color4f(0.71, 1.0, 0.42, 0.20) if is_ap else skia.Color4f(1.0, 1.0, 1.0, 0.10)
+    stroke_color = skia.Color4f(0.71, 1.0, 0.42, 0.55) if is_ap else skia.Color4f(1.0, 1.0, 1.0, 0.26)
+    canvas.drawRRect(rect, skia.Paint(AntiAlias=True, Color4f=fill))
+    canvas.drawRRect(
+        rect,
+        skia.Paint(AntiAlias=True, Style=skia.Paint.kStroke_Style, StrokeWidth=1.5, Color4f=stroke_color),
+    )
+    canvas.drawString("COMBO", x + 20, y + 22, label_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT))
+    canvas.drawString(text, x + 18, y + 63, font, skia.Paint(AntiAlias=True, Color4f=C_ACH_A if is_ap else C_TEXT_HI))
+
+
 # ──────────── публичный API ────────────
 
 
@@ -250,6 +271,7 @@ def render(inp: TrackResultInput) -> bytes:
         _eyebrow(canvas, "RANK", rank_x, 330)
         rank_font = skia.Font(fonts.get("display"), 118)
         canvas.drawString(inp.rank, rank_x, 448, rank_font, skia.Paint(AntiAlias=True, Color4f=C_ACH_A))
+        _combo_badge(canvas, inp.combo_badge, rank_x + min(330, rank_font.measureText(inp.rank) + 34), 374)
         _rating_delta_badge(canvas, rank_x, 472, inp.rating_delta)
 
         stats = (

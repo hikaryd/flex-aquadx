@@ -118,6 +118,7 @@ async def recent_card(
         deluxe_score=int(play.deluxe_score or 0),
         deluxe_max=int(play.deluxe_score or 0),
         rating_delta=(int(play.after_rating) - previous_rating if play.after_rating and previous_rating is not None else 0),
+        combo_badge=_combo_badge(play),
         judgements=_judgements_for_render(play),
         note_accuracy=_note_accuracy_for_render(play),
         play_date=str(play.user_play_date or play.play_date or ""),
@@ -277,6 +278,7 @@ async def score_card(
         deluxe_score=int(play.deluxe_score or 0),
         deluxe_max=int(play.deluxe_score or 0),
         rating_delta=0,
+        combo_badge=_combo_badge(detailed_play or play),
         judgements=_judgements_for_render(detailed_play or play),
         note_accuracy=_note_accuracy_for_render(detailed_play or play),
         play_date=str(
@@ -337,10 +339,30 @@ async def _matching_playlog_for_score(
 
 
 def _combo_badge(play: object) -> str:
+    """Infer maimai combo badge, including + variants when detailed judgements exist.
+
+    Upstream best-score rows often omit boolean combo flags, while detailed
+    playlog rows have judgement counts. For Telegram cards, infer from
+    judgements first so FC/FC+/AP/AP+ still appears on `/rs` and `/mine`.
+    """
+    j = getattr(play, "judgements", None)
+    if j is not None:
+        perfect = int(getattr(j, "perfect", 0) or 0)
+        great = int(getattr(j, "great", 0) or 0)
+        good = int(getattr(j, "good", 0) or 0)
+        miss = int(getattr(j, "miss", 0) or 0)
+        if perfect == 0 and great == 0 and good == 0 and miss == 0:
+            return "AP+"
+        if great == 0 and good == 0 and miss == 0:
+            return "AP"
+        if good == 0 and miss == 0:
+            return "FC+"
+        if miss == 0:
+            return "FC"
     if getattr(play, "is_all_perfect", None):
         return "AP+" if getattr(play, "is_full_combo", None) else "AP"
     if getattr(play, "is_full_combo", None):
-        return "FC+" if getattr(play, "max_combo", None) else "FC"
+        return "FC"
     return ""
 
 
