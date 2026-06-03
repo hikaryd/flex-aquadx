@@ -298,7 +298,7 @@ async def fetch_map_leaderboard_png(update: Update, last: LastMap) -> bytes:
     if not usernames:
         raise ValueError("no_linked_profiles")
 
-    card_title = f"{last.title} [{last.difficulty}]"
+    card_title = last.title
     query = urlencode({
         "usernames": ",".join(usernames),
         "musicId": str(last.music_id),

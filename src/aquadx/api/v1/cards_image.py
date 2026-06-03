@@ -366,6 +366,26 @@ def _combo_badge(play: object) -> str:
     return ""
 
 
+def _map_info_subtitle(music: MusicMeta | None, music_id: int, difficulty: str | None) -> str:
+    parts: list[str] = []
+    if music and music.artist:
+        parts.append(str(music.artist))
+    if difficulty:
+        diff_text = str(difficulty)
+        if music and music.levels:
+            level = music.levels[_safe_level_index(diff_text, music.levels)]
+            if level > 0:
+                diff_text = f"{diff_text} {level:g}"
+        parts.append(diff_text)
+    if music and music.genre:
+        parts.append(str(music.genre))
+    if music and music.bpm:
+        parts.append(f"BPM {music.bpm:g}")
+    parts.append(f"musicId {music_id}")
+    parts.append("сортировка по achievement/DX")
+    return " · ".join(parts)
+
+
 @router.get(
     "/-/maimai/scores/leaderboard/card.png",
     summary="PNG-лидерборд привязанных профилей по конкретной карте",
@@ -442,9 +462,13 @@ async def score_leaderboard_card(
         )
         for i, entry in enumerate(entries)
     ]
-    subtitle = f"musicId {musicId}" + (f" · {difficulty}" if difficulty else "") + " · сортировка по achievement/DX"
-    inp = LeaderboardInput(title=title, entries=ranked, subtitle=subtitle, value_label="TOP SCORE")
-    etag_payload = {"title": title, "musicId": musicId, "difficulty": difficulty, "entries": [entry.__dict__ for entry in ranked]}
+    music = lookup.get(musicId)
+    subtitle = _map_info_subtitle(music, musicId, difficulty)
+    display_title = title
+    if (not display_title or display_title == "MaiMai map leaderboard") and music and music.title:
+        display_title = music.title
+    inp = LeaderboardInput(title=display_title, entries=ranked, subtitle=subtitle, value_label="TOP SCORE")
+    etag_payload = {"title": display_title, "musicId": musicId, "difficulty": difficulty, "subtitle": subtitle, "entries": [entry.__dict__ for entry in ranked]}
 
     async def _build() -> bytes:
         return await renderer.run_render(lambda: render_leaderboard(inp))

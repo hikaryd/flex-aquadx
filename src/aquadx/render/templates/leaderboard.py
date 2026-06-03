@@ -164,8 +164,9 @@ def render(inp: LeaderboardInput) -> bytes:
         title_font = skia.Font(fonts.get("cjk-bold"), 52)
         title = _ellipsized(title_font, inp.title, 720)
         canvas.drawString(title, hero_x + 28, hero_y + 92, title_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI))
-        subtitle = inp.subtitle or f"{len(inp.entries)} игроков · сортировка по rating"
-        _text(canvas, subtitle, hero_x + 28, hero_y + 126, 24, color=C_TEXT_FAINT)
+        subtitle_font = skia.Font(fonts.get("ui"), 24)
+        subtitle = _ellipsized(subtitle_font, inp.subtitle or f"{len(inp.entries)} игроков · сортировка по rating", 920)
+        canvas.drawString(subtitle, hero_x + 28, hero_y + 126, subtitle_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT))
 
         top = inp.entries[0] if inp.entries else None
         _label(canvas, inp.value_label, hero_x + hero_w - 270, hero_y + 34)
