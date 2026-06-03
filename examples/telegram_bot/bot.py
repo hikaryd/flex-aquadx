@@ -11,7 +11,7 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 import httpx
-from telegram import BotCommand, Update
+from telegram import BotCommand, InputMediaPhoto, Update
 from telegram.constants import BotCommandScopeType, ChatAction
 from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -287,13 +287,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-async def map_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE, last: LastMap | None = None) -> None:
-    if last is None:
-        reply_to_message_id = update.message.reply_to_message.message_id if update.message.reply_to_message else None
-        last = await get_last_map(update.effective_chat.id, reply_to_message_id)
-    if not last:
-        await update.message.reply_text("Сначала в этом чате надо вызвать `/rs`, чтобы выбрать карту.")
-        return
+async def fetch_map_leaderboard_png(update: Update, last: LastMap) -> bytes:
     usernames = get_all_profiles_local()
     current = await get_profile(update.effective_user.id)
     if current and current.casefold() not in {u.casefold() for u in usernames}:
@@ -301,10 +295,8 @@ async def map_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE, la
     if last.source_username and last.source_username.casefold() not in {u.casefold() for u in usernames}:
         usernames.insert(0, last.source_username)
     if not usernames:
-        await update.message.reply_text("В базе ещё нет привязанных профилей. Используй `/profile username`.")
-        return
+        raise ValueError("no_linked_profiles")
 
-    await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
     card_title = f"{last.title} [{last.difficulty}]"
     query = urlencode({
         "usernames": ",".join(usernames),
@@ -313,15 +305,30 @@ async def map_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE, la
         "title": card_title,
         "scale": "1",
     })
+    return await api_png(f"/v1/players/-/maimai/scores/leaderboard/card.png?{query}")
+
+
+async def map_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE, last: LastMap | None = None) -> None:
+    if last is None:
+        reply_to_message_id = update.message.reply_to_message.message_id if update.message.reply_to_message else None
+        last = await get_last_map(update.effective_chat.id, reply_to_message_id)
+    if not last:
+        await update.message.reply_text("Сначала в этом чате надо вызвать `/rs`, чтобы выбрать карту.")
+        return
+
+    await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
     try:
-        png = await api_png(f"/v1/players/-/maimai/scores/leaderboard/card.png?{query}")
+        png = await fetch_map_leaderboard_png(update, last)
+    except ValueError:
+        await update.message.reply_text("В базе ещё нет привязанных профилей. Используй `/profile username`.")
+        return
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
-            await update.message.reply_text(f"Пока ни у кого из привязанных профилей нет скора на {last.title} [{last.difficulty}].")
+            await update.message.reply_text(f"Пока ни у кого из привязанных профилей нет скора на {last.title}.")
         else:
             await update.message.reply_text(f"AquaDX не смог собрать map leaderboard ({e.response.status_code}).")
         return
-    await update.message.reply_photo(photo=BytesIO(png), caption=f"Leaderboard по карте · {last.title} [{last.difficulty}]")
+    await update.message.reply_photo(photo=BytesIO(png), caption=f"Leaderboard по карте · {last.title}")
 
 
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -397,14 +404,23 @@ async def rs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         title = str(music.get("title") or f"musicId {music_id}")
         artist = str(music.get("artist") or "")
         last_map = LastMap(music_id, diff, title, artist, username)
-        png = await api_png(f"/v1/players/{quote(username)}/maimai/recent/card.png?index={index}&theme=dark&scale=1")
+        score_png = await api_png(f"/v1/players/{quote(username)}/maimai/recent/card.png?index={index}&theme=dark&scale=1")
+        leaderboard_png = await fetch_map_leaderboard_png(update, last_map)
+    except ValueError:
+        await update.message.reply_text("В базе ещё нет привязанных профилей. Используй `/profile username`.")
+        return
     except httpx.HTTPStatusError as e:
         await update.message.reply_text(f"AquaDX вернул ошибку {e.response.status_code} для `{username}`.")
         return
-    caption = f"`{username}` · {title} [{diff}]\nТеперь любой с привязанным профилем может написать `/mine`. Следующим сообщением — leaderboard по этой карте."
-    sent = await update.message.reply_photo(photo=BytesIO(png), caption=caption)
-    await set_last_map(update.effective_chat.id, sent.message_id, last_map)
-    await map_leaderboard(update, context, last_map)
+    caption = f"`{username}` · {title} [{diff}]\nScore + leaderboard по этой карте. `/mine` покажет твой скор."
+    sent_messages = await update.message.reply_media_group(
+        media=[
+            InputMediaPhoto(media=BytesIO(score_png), caption=caption),
+            InputMediaPhoto(media=BytesIO(leaderboard_png)),
+        ]
+    )
+    if sent_messages:
+        await set_last_map(update.effective_chat.id, sent_messages[0].message_id, last_map)
 
 
 async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
