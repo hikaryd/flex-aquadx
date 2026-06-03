@@ -287,6 +287,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def map_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE, last: LastMap | None = None) -> None:
+    if last is None:
+        reply_to_message_id = update.message.reply_to_message.message_id if update.message.reply_to_message else None
+        last = await get_last_map(update.effective_chat.id, reply_to_message_id)
+    if not last:
+        await update.message.reply_text("Сначала в этом чате надо вызвать `/rs`, чтобы выбрать карту.")
+        return
+    usernames = get_all_profiles_local()
+    current = await get_profile(update.effective_user.id)
+    if current and current.casefold() not in {u.casefold() for u in usernames}:
+        usernames.insert(0, current)
+    if last.source_username and last.source_username.casefold() not in {u.casefold() for u in usernames}:
+        usernames.insert(0, last.source_username)
+    if not usernames:
+        await update.message.reply_text("В базе ещё нет привязанных профилей. Используй `/profile username`.")
+        return
+
+    await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
+    card_title = f"{last.title} [{last.difficulty}]"
+    query = urlencode({
+        "usernames": ",".join(usernames),
+        "musicId": str(last.music_id),
+        "difficulty": last.difficulty,
+        "title": card_title,
+        "scale": "1",
+    })
+    try:
+        png = await api_png(f"/v1/players/-/maimai/scores/leaderboard/card.png?{query}")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            await update.message.reply_text(f"Пока ни у кого из привязанных профилей нет скора на {last.title} [{last.difficulty}].")
+        else:
+            await update.message.reply_text(f"AquaDX не смог собрать map leaderboard ({e.response.status_code}).")
+        return
+    await update.message.reply_photo(photo=BytesIO(png), caption=f"Leaderboard по карте · {last.title} [{last.difficulty}]")
+
+
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     usernames = get_all_profiles_local()
     current = await get_profile(update.effective_user.id)
@@ -364,9 +401,10 @@ async def rs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except httpx.HTTPStatusError as e:
         await update.message.reply_text(f"AquaDX вернул ошибку {e.response.status_code} для `{username}`.")
         return
-    caption = f"`{username}` · {title} [{diff}]\nТеперь любой с привязанным профилем может написать `/mine`."
+    caption = f"`{username}` · {title} [{diff}]\nТеперь любой с привязанным профилем может написать `/mine`. Следующим сообщением — leaderboard по этой карте."
     sent = await update.message.reply_photo(photo=BytesIO(png), caption=caption)
     await set_last_map(update.effective_chat.id, sent.message_id, last_map)
+    await map_leaderboard(update, context, last_map)
 
 
 async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -399,6 +437,7 @@ async def post_init(app: Application) -> None:
         BotCommand("profile", "показать B50-профиль или привязать username"),
         BotCommand("rs", "показать recent score: /rs [username] [index]"),
         BotCommand("mine", "твой скор на карте из последнего /rs"),
+        BotCommand("maplb", "лидерборд по карте из последнего /rs"),
         BotCommand("leaderboard", "общий лидерборд привязанных профилей"),
         BotCommand("lb", "короткая команда лидерборда"),
     ]
@@ -419,6 +458,7 @@ def main() -> None:
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("rs", rs))
     app.add_handler(CommandHandler("mine", mine))
+    app.add_handler(CommandHandler("maplb", map_leaderboard))
     app.add_handler(CommandHandler("leaderboard", leaderboard))
     app.add_handler(CommandHandler("lb", leaderboard))
     app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)

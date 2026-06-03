@@ -245,6 +245,32 @@ def test_rating_card_endpoint_returns_png(client: TestClient) -> None:
     assert img2.size == (1920, 1080)
 
 
+def test_score_leaderboard_card_endpoint_returns_png(client: TestClient) -> None:
+    _seed_meta()
+    renderer.reset_semaphore()
+
+    def _score_response(request: object) -> Response:
+        username = str(request.url).split("username=", 1)[1]
+        if username.startswith("Alice"):
+            payload = [{"musicId": 42, "level": 3, "achievement": 1005000, "deluxscore": 2800, "isFullCombo": True, "maxCombo": 900}]
+        else:
+            payload = [{"musicId": 42, "level": 3, "achievement": 1009000, "deluxscore": 2810, "isAllPerfect": True, "isFullCombo": True, "maxCombo": 900}]
+        return Response(200, json=payload)
+
+    with respx.mock(assert_all_called=False) as r:
+        r.post(BASE + f"{MAI2}/user-music-from-list").mock(side_effect=_score_response)
+        response = client.get(
+            "/v1/players/-/maimai/scores/leaderboard/card.png"
+            "?usernames=Alice,Bob&musicId=42&difficulty=MASTER&title=Recent%20Track"
+        )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    img = Image.open(BytesIO(response.content))
+    img.verify()
+    img2 = Image.open(BytesIO(response.content))
+    assert img2.size == (1280, 1600)
+
+
 def test_ttl_cache_supports_bytes() -> None:
     """Существующий TTLCache должен корректно хранить bytes для image-кэша."""
     import asyncio

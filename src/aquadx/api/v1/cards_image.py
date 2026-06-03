@@ -335,6 +335,107 @@ async def _matching_playlog_for_score(
     )
 
 
+
+def _combo_badge(play: object) -> str:
+    if getattr(play, "is_all_perfect", None):
+        return "AP+" if getattr(play, "is_full_combo", None) else "AP"
+    if getattr(play, "is_full_combo", None):
+        return "FC+" if getattr(play, "max_combo", None) else "FC"
+    return ""
+
+
+@router.get(
+    "/-/maimai/scores/leaderboard/card.png",
+    summary="PNG-лидерборд привязанных профилей по конкретной карте",
+    response_class=Response,
+)
+async def score_leaderboard_card(
+    usernames: str = Query(..., min_length=1, max_length=512),
+    musicId: int = Query(..., ge=1),
+    difficulty: str | None = Query(None),
+    title: str = Query("MaiMai map leaderboard", max_length=100),
+    scale: int = Query(1, ge=1, le=2),
+    client: AquadxClient = Depends(get_client),
+    lookup: dict[int, MusicMeta] = Depends(music_lookup),
+    cache: Cache = Depends(get_cache),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    names: list[str] = []
+    seen: set[str] = set()
+    for raw_name in usernames.split(","):
+        name = raw_name.strip()
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            names.append(name)
+            if len(names) >= 20:
+                break
+    if not names:
+        raise NotFoundError("No usernames for score leaderboard")
+
+    ids = [musicId]
+    gate = asyncio.Semaphore(5)
+
+    async def _load_one(name: str) -> LeaderboardEntry | None:
+        # Cache each player's score list separately, so the bot can assemble
+        # repeated chat leaderboards quickly without refetching every profile.
+        score_key = f"maimai-score-leaderboard|{name}|{musicId}"
+        raw = await cache.get(score_key)
+        if raw is None:
+            try:
+                async with gate:
+                    raw = await client.post(f"{MAI2_PREFIX}/user-music-from-list", params={"username": name}, json=ids)
+            except Exception:
+                return None
+            await cache.set(score_key, raw, ttl=settings.cache_ttl_player_seconds)
+        plays = map_recent_plays(raw if isinstance(raw, list) else [], music_lookup=lookup)
+        if difficulty:
+            plays = [p for p in plays if str(p.difficulty).upper() == difficulty.upper()]
+        if not plays:
+            return None
+        play = max(plays, key=lambda p: (float(p.achievement or 0), int(p.deluxe_score or 0)))
+        return LeaderboardEntry(
+            username=name,
+            rating=0,
+            rank=0,
+            achievement=float(play.achievement or 0),
+            score_rank=str(play.rank or ""),
+            deluxe_score=int(play.deluxe_score or 0),
+            combo_badge=_combo_badge(play),
+        )
+
+    loaded = await asyncio.gather(*(_load_one(name) for name in names))
+    entries = sorted((entry for entry in loaded if entry is not None), key=lambda e: (e.achievement or 0.0, e.deluxe_score or 0), reverse=True)
+    if not entries:
+        raise NotFoundError(f"No scores for musicId={musicId}, difficulty={difficulty or '*'}")
+    ranked = [
+        LeaderboardEntry(
+            username=entry.username,
+            rating=0,
+            rank=i + 1,
+            achievement=entry.achievement,
+            score_rank=entry.score_rank,
+            deluxe_score=entry.deluxe_score,
+            combo_badge=entry.combo_badge,
+        )
+        for i, entry in enumerate(entries)
+    ]
+    subtitle = f"musicId {musicId}" + (f" · {difficulty}" if difficulty else "") + " · сортировка по achievement/DX"
+    inp = LeaderboardInput(title=title, entries=ranked, subtitle=subtitle, value_label="TOP SCORE")
+    etag_payload = {"title": title, "musicId": musicId, "difficulty": difficulty, "entries": [entry.__dict__ for entry in ranked]}
+
+    async def _build() -> bytes:
+        return await renderer.run_render(lambda: render_leaderboard(inp))
+
+    return await _png_response(
+        cache,
+        settings,
+        endpoint=f"score-leaderboard/{musicId}/{difficulty or ''}/" + ",".join(names),
+        etag_payload=etag_payload,
+        build_png=_build,
+        scale=scale,
+    )
+
 @router.get(
     "/{username}/maimai/rating/card.png",
     summary="PNG-карточка best35/best15 рейтинг-фрейма",
