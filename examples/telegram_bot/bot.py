@@ -260,7 +260,7 @@ def parse_user_and_index(args: list[str], default_username: str | None) -> tuple
 
 
 def need_profile_text() -> str:
-    return "Сначала привяжи AquaDX-профиль: `/profile твой_username`"
+    return "Сначала привяжи AquaDX-профиль: `/profile твой_username`\n请先绑定 AquaDX 账号：`/profile 你的用户名`"
 
 
 async def api_json(path: str) -> dict[str, Any]:
@@ -314,22 +314,22 @@ async def map_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE, la
         reply_to_message_id = update.message.reply_to_message.message_id if update.message.reply_to_message else None
         last = await get_last_map(update.effective_chat.id, reply_to_message_id)
     if not last:
-        await update.message.reply_text("Сначала в этом чате надо вызвать `/rs`, чтобы выбрать карту.")
+        await update.message.reply_text("Сначала в этом чате надо вызвать `/rs`, чтобы выбрать карту.\n请先在本聊天中使用 `/rs` 选择谱面。")
         return
 
     await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
     try:
         png = await fetch_map_leaderboard_png(update, last)
     except ValueError:
-        await update.message.reply_text("В базе ещё нет привязанных профилей. Используй `/profile username`.")
+        await update.message.reply_text("В базе ещё нет привязанных профилей. Используй `/profile username`.\n数据库里还没有绑定的账号。请使用 `/profile 用户名`。")
         return
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
-            await update.message.reply_text(f"Пока ни у кого из привязанных профилей нет скора на {last.title}.")
+            await update.message.reply_text(f"Пока ни у кого из привязанных профилей нет скора на {last.title}.\n目前绑定账号中还没有人在 {last.title} 上有成绩。")
         else:
-            await update.message.reply_text(f"AquaDX не смог собрать map leaderboard ({e.response.status_code}).")
+            await update.message.reply_text(f"AquaDX не смог собрать map leaderboard ({e.response.status_code}).\nAquaDX 无法生成该谱面排行榜 ({e.response.status_code})。")
         return
-    await update.message.reply_photo(photo=BytesIO(png), caption=f"Leaderboard по карте · {last.title}")
+    await update.message.reply_photo(photo=BytesIO(png), caption=f"Leaderboard по карте · {last.title}\n谱面排行榜 · {last.title}")
 
 
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -338,7 +338,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if current and current.casefold() not in {u.casefold() for u in usernames}:
         usernames.insert(0, current)
     if not usernames:
-        await update.message.reply_text("В базе ещё нет привязанных профилей. Используй `/profile username`.")
+        await update.message.reply_text("В базе ещё нет привязанных профилей. Используй `/profile username`.\n数据库里还没有绑定的账号。请使用 `/profile 用户名`。")
         return
 
     await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
@@ -347,9 +347,9 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     try:
         png = await api_png(f"/v1/players/-/maimai/leaderboard/card.png?{query}")
     except httpx.HTTPStatusError as e:
-        await update.message.reply_text(f"AquaDX не смог собрать leaderboard ({e.response.status_code}).")
+        await update.message.reply_text(f"AquaDX не смог собрать leaderboard ({e.response.status_code}).\nAquaDX 无法生成排行榜 ({e.response.status_code})。")
         return
-    await update.message.reply_photo(photo=BytesIO(png), caption=f"Leaderboard · {len(usernames)} profiles")
+    await update.message.reply_photo(photo=BytesIO(png), caption=f"Leaderboard · {len(usernames)} profiles\n排行榜 · {len(usernames)} 个账号")
 
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -361,16 +361,16 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         data = await api_json(f"/v1/players/{quote(username)}")
     except httpx.HTTPStatusError as e:
-        await update.message.reply_text(f"Не нашёл профиль `{username}` ({e.response.status_code}).")
+        await update.message.reply_text(f"Не нашёл профиль `{username}` ({e.response.status_code}).\n未找到账号 `{username}` ({e.response.status_code})。")
         return
     if context.args:
         await set_profile(user_id, username)
 
     player = data.get("data", {})
     mai = player.get("maimai") or {}
-    caption_parts = [f"Профиль `{username}`"]
+    caption_parts = [f"Профиль `{username}` / 账号 `{username}`"]
     if context.args:
-        caption_parts.append("привязан ✅")
+        caption_parts.append("привязан ✅ / 已绑定 ✅")
     if mai:
         caption_parts.append(f"rating: {mai.get('rating') or '—'}")
 
@@ -379,7 +379,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         png = await api_png(f"/v1/players/{quote(username)}/maimai/rating/card.png?theme=dark&scale=1")
     except httpx.HTTPStatusError as e:
         await update.message.reply_text(
-            "\n".join(caption_parts) + f"\nНе смог получить B50-картинку ({e.response.status_code})."
+            "\n".join(caption_parts) + f"\nНе смог получить B50-картинку ({e.response.status_code}).\n无法获取 B50 图片 ({e.response.status_code})。"
         )
         return
     await update.message.reply_photo(photo=BytesIO(png), caption=" · ".join(caption_parts))
@@ -392,14 +392,14 @@ async def rs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(need_profile_text())
         return
     if index > MAX_RECENT_INDEX:
-        await update.message.reply_text(f"Recent index должен быть 0–{MAX_RECENT_INDEX}; AquaDX API не отдаёт больше 200 последних игр.")
+        await update.message.reply_text(f"Recent index должен быть 0–{MAX_RECENT_INDEX}; AquaDX API не отдаёт больше 200 последних игр.\nRecent index 必须是 0–{MAX_RECENT_INDEX}；AquaDX API 最多只返回最近 200 次游玩。")
         return
     await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
     try:
         recent = await api_json(f"/v1/players/{quote(username)}/maimai/recent?limit={max(index + 1, 1)}")
         plays = recent.get("data") or []
         if index >= len(plays):
-            await update.message.reply_text(f"У `{username}` нет recent-скора с index={index}.")
+            await update.message.reply_text(f"У `{username}` нет recent-скора с index={index}.\n`{username}` 没有 index={index} 的最近成绩。")
             return
         play = plays[index]
         music = play.get("music") or {}
@@ -411,12 +411,12 @@ async def rs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         score_png = await api_png(f"/v1/players/{quote(username)}/maimai/recent/card.png?index={index}&theme=dark&scale=1")
         leaderboard_png = await fetch_map_leaderboard_png(update, last_map)
     except ValueError:
-        await update.message.reply_text("В базе ещё нет привязанных профилей. Используй `/profile username`.")
+        await update.message.reply_text("В базе ещё нет привязанных профилей. Используй `/profile username`.\n数据库里还没有绑定的账号。请使用 `/profile 用户名`。")
         return
     except httpx.HTTPStatusError as e:
-        await update.message.reply_text(f"AquaDX вернул ошибку {e.response.status_code} для `{username}`.")
+        await update.message.reply_text(f"AquaDX вернул ошибку {e.response.status_code} для `{username}`.\nAquaDX 对 `{username}` 返回错误 {e.response.status_code}。")
         return
-    caption = f"`{username}` · {title}\nScore + leaderboard по этой карте. `/mine` покажет твой скор."
+    caption = f"`{username}` · {title}\nScore + leaderboard по этой карте. `/mine` покажет твой скор.\n本谱面的成绩 + 排行榜。`/mine` 可查看你的成绩。"
     sent_messages = await update.message.reply_media_group(
         media=[
             InputMediaPhoto(media=BytesIO(score_png), caption=caption),
@@ -431,7 +431,7 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     reply_to_message_id = update.message.reply_to_message.message_id if update.message.reply_to_message else None
     last = await get_last_map(update.effective_chat.id, reply_to_message_id)
     if not last:
-        await update.message.reply_text("Сначала в этом чате надо вызвать `/rs`, чтобы выбрать карту.")
+        await update.message.reply_text("Сначала в этом чате надо вызвать `/rs`, чтобы выбрать карту.\n请先在本聊天中使用 `/rs` 选择谱面。")
         return
     username = context.args[0] if context.args else await get_profile(update.effective_user.id)
     if not username:
@@ -444,22 +444,22 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
-            await update.message.reply_text(f"У `{username}` не нашёл скора на {last.title}.")
+            await update.message.reply_text(f"У `{username}` не нашёл скора на {last.title}.\n未找到 `{username}` 在 {last.title} 上的成绩。")
         else:
-            await update.message.reply_text(f"AquaDX вернул ошибку {e.response.status_code} для `{username}`.")
+            await update.message.reply_text(f"AquaDX вернул ошибку {e.response.status_code} для `{username}`.\nAquaDX 对 `{username}` 返回错误 {e.response.status_code}。")
         return
-    await update.message.reply_photo(photo=BytesIO(png), caption=f"`{username}` на {last.title}")
+    await update.message.reply_photo(photo=BytesIO(png), caption=f"`{username}` на {last.title}\n`{username}` 在 {last.title} 上的成绩")
 
 
 async def post_init(app: Application) -> None:
     commands = [
-        BotCommand("start", "справка по AquaDX-боту"),
-        BotCommand("profile", "показать B50-профиль или привязать username"),
-        BotCommand("rs", "показать recent score: /rs [username] [index]"),
-        BotCommand("mine", "твой скор на карте из последнего /rs"),
-        BotCommand("maplb", "лидерборд по карте из последнего /rs"),
-        BotCommand("leaderboard", "общий лидерборд привязанных профилей"),
-        BotCommand("lb", "короткая команда лидерборда"),
+        BotCommand("start", "справка / 帮助"),
+        BotCommand("profile", "B50-профиль или привязка / B50或绑定"),
+        BotCommand("rs", "recent score / 最近成绩"),
+        BotCommand("mine", "твой скор на последней карте / 你的成绩"),
+        BotCommand("maplb", "лидерборд карты / 谱面排行榜"),
+        BotCommand("leaderboard", "общий лидерборд / 总排行榜"),
+        BotCommand("lb", "короткий leaderboard / 排行榜"),
     ]
     await app.bot.set_my_commands(commands)
     await app.bot.set_my_commands(commands, scope={"type": BotCommandScopeType.ALL_GROUP_CHATS})

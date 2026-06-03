@@ -89,6 +89,11 @@ def _label(canvas: skia.Canvas, s: str, x: float, y: float) -> None:
     _text(canvas, s.upper(), x, y, 10.5, color=C_TEXT_FAINT, role="ui-bold")
 
 
+def _label_bi(canvas: skia.Canvas, en: str, zh: str, x: float, y: float) -> None:
+    """Compact EN/ZH label. Kept on one line to avoid changing layout height."""
+    _text(canvas, f"{en.upper()} · {zh}", x, y, 10.5, color=C_TEXT_FAINT, role="cjk-bold")
+
+
 def _ellipsized(font: skia.Font, s: str, max_w: float) -> str:
     if font.measureText(s) <= max_w:
         return s
@@ -136,7 +141,7 @@ def _draw_row(canvas: skia.Canvas, item: LeaderboardEntry, x: float, y: float, w
     name = _ellipsized(name_font, item.username, 520)
     canvas.drawString(name, x + 98, y + 52, name_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI))
     if item.achievement is None:
-        detail = f"B35 {item.b35_sum}  ·  B15 {item.b15_sum}  ·  {item.best_count} карт"
+        detail = f"B35 {item.b35_sum}  ·  B15 {item.b15_sum}  ·  {item.best_count} карт/首"
     else:
         detail = f"DX {item.deluxe_score or 0}  ·  {item.score_rank or '—'}"
     _text(canvas, detail, x + 98, y + 88, 22, color=C_TEXT_FAINT, role="mono")
@@ -160,16 +165,17 @@ def render(inp: LeaderboardInput) -> bytes:
         hero_w, hero_h = W - 2 * MARGIN, HERO_H
         _surface(canvas, skia.Rect.MakeXYWH(hero_x, hero_y, hero_w, hero_h), radius=20)
 
-        _label(canvas, "MAIMAI LEADERBOARD", hero_x + 28, hero_y + 34)
+        _label_bi(canvas, "MAIMAI LEADERBOARD", "排行榜", hero_x + 28, hero_y + 34)
         title_font = skia.Font(fonts.get("cjk-bold"), 52)
         title = _ellipsized(title_font, inp.title, 720)
         canvas.drawString(title, hero_x + 28, hero_y + 92, title_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_HI))
         subtitle_font = skia.Font(fonts.get("ui"), 24)
-        subtitle = _ellipsized(subtitle_font, inp.subtitle or f"{len(inp.entries)} игроков · сортировка по rating", 920)
+        subtitle = _ellipsized(subtitle_font, inp.subtitle or f"{len(inp.entries)} игроков/玩家 · сортировка/排序 по rating", 920)
         canvas.drawString(subtitle, hero_x + 28, hero_y + 126, subtitle_font, skia.Paint(AntiAlias=True, Color4f=C_TEXT_FAINT))
 
         top = inp.entries[0] if inp.entries else None
-        _label(canvas, inp.value_label, hero_x + hero_w - 270, hero_y + 34)
+        value_label_zh = "达成率" if inp.value_label.upper().startswith("ACH") else "评级"
+        _label_bi(canvas, inp.value_label, value_label_zh, hero_x + hero_w - 270, hero_y + 34)
         top_value = f"{top.achievement:.4f}%" if top and top.achievement is not None else str(top.rating if top else 0)
         _text_right(canvas, top_value, hero_x + hero_w - 28, hero_y + 95, 50 if len(top_value) > 7 else 58, color=C_ACCENT, role="mono-bold")
         top_name = _ellipsized(skia.Font(fonts.get("cjk-bold"), 24), top.username if top else "—", 260)
@@ -181,7 +187,7 @@ def render(inp: LeaderboardInput) -> bytes:
             _draw_row(canvas, item, MARGIN, rows_y + i * (ROW_H + GUTTER), W - 2 * MARGIN)
 
         if len(inp.entries) > max_rows:
-            _text_right(canvas, f"+{len(inp.entries) - max_rows} скрыто", W - MARGIN, H - 18, 13, color=C_TEXT_FAINT, role="mono")
+            _text_right(canvas, f"+{len(inp.entries) - max_rows} скрыто/隐藏", W - MARGIN, H - 18, 13, color=C_TEXT_FAINT, role="cjk")
 
     image = surface.makeImageSnapshot()
     return bytes(image.encodeToData(skia.kPNG, 95))
