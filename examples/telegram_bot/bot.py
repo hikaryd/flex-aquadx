@@ -18,6 +18,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 API_BASE = os.getenv("AQUADX_API_BASE", "http://127.0.0.1:8017").rstrip("/")
 DB_PATH = Path(os.getenv("AQUADX_BOT_DB", "/opt/aquadx-tg-bot/aquadx_bot.sqlite3"))
 TIMEOUT = httpx.Timeout(35.0, connect=10.0)
+MAX_RECENT_INDEX = 199
 STORAGE_API_BASE = os.getenv("STORAGE_API_BASE", "").rstrip("/")
 STORAGE_API_TOKEN = os.getenv("STORAGE_API_TOKEN", "")
 STORAGE_TIMEOUT = httpx.Timeout(float(os.getenv("STORAGE_API_TIMEOUT", "10")), connect=5.0)
@@ -389,6 +390,9 @@ async def rs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     username, index = parse_user_and_index(context.args, default)
     if not username:
         await update.message.reply_text(need_profile_text())
+        return
+    if index > MAX_RECENT_INDEX:
+        await update.message.reply_text(f"Recent index должен быть 0–{MAX_RECENT_INDEX}; AquaDX API не отдаёт больше 200 последних игр.")
         return
     await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
     try:
