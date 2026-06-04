@@ -41,6 +41,7 @@ async def test_loader_fetches_and_parses() -> None:
     assert item is not None
     assert item.title == "Oshama Scramble!"
     assert item.jacket == "https://cdn.example/d/mai2/music/000834.png"
+    assert item.version is None
     assert item.levels == [4.0, 14.7]
 
 

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#101318" />
+  <title>MaiMai Catalog</title>
+  <style>
+    :root{--bg:#101318;--panel:#171b22;--panel2:#1d232c;--ink:#f4f0e9;--muted:#a79f94;--faint:#69635d;--line:rgba(244,240,233,.12);--accent:#d7ff63;--pink:#ff75bc;--green:#9cff9a;--yellow:#ffe063;--red:#ff666e;--purple:#d498ff;--blue:#79c7ff;--shadow:0 18px 50px rgba(0,0,0,.36)}
+    *{box-sizing:border-box} html{background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif} body{margin:0;min-height:100svh;background:radial-gradient(900px 500px at 20% -10%,rgba(215,255,99,.12),transparent 55%),linear-gradient(180deg,#151922 0%,#0f1217 100%);}
+    .app{max-width:740px;margin:0 auto;padding:calc(14px + env(safe-area-inset-top)) 14px calc(28px + env(safe-area-inset-bottom))}
+    .hero{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;margin-bottom:14px}.kicker{font-size:11px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;font-weight:800}.title{font-family:Georgia,"Times New Roman",serif;font-size:34px;line-height:.95;margin:3px 0 0}.counter{font:800 22px ui-monospace,monospace;color:var(--accent);text-align:right}.counter span{display:block;font:700 10px ui-sans-serif;color:var(--faint);letter-spacing:.12em;text-transform:uppercase}
+    .search{position:sticky;top:0;z-index:10;margin:0 -14px 12px;padding:8px 14px 12px;background:linear-gradient(180deg,rgba(16,19,24,.96),rgba(16,19,24,.82));backdrop-filter:blur(18px);border-bottom:1px solid rgba(255,255,255,.06)}
+    input,select{width:100%;border:1px solid var(--line);background:rgba(255,255,255,.045);color:var(--ink);border-radius:16px;padding:13px 14px;font-size:16px;outline:none} input:focus,select:focus{border-color:rgba(215,255,99,.6);box-shadow:0 0 0 3px rgba(215,255,99,.1)} select{appearance:none}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.chips{display:flex;gap:7px;overflow-x:auto;padding:8px 0 0;scrollbar-width:none}.chip{flex:0 0 auto;border:1px solid var(--line);background:rgba(255,255,255,.035);color:var(--muted);border-radius:999px;padding:9px 11px;font-size:12px;font-weight:800;letter-spacing:.02em}.chip.active{background:var(--accent);border-color:var(--accent);color:#141414}.range{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+    .list{display:grid;gap:10px}.card{display:grid;grid-template-columns:74px 1fr;gap:12px;background:linear-gradient(135deg,rgba(255,255,255,.075),rgba(255,255,255,.035));border:1px solid var(--line);box-shadow:var(--shadow);padding:10px;border-radius:22px;min-height:96px;contain:content}.jacket{width:74px;height:74px;object-fit:cover;border-radius:14px;background:#242932;border:1px solid rgba(255,255,255,.12)}.meta{min-width:0}.row{display:flex;align-items:center;gap:7px;min-width:0}.song{font-weight:900;font-size:16px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.artist{color:var(--muted);font-size:12px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sub{display:flex;gap:8px;margin-top:8px;color:var(--faint);font-size:11px;white-space:nowrap;overflow:hidden}.pill{font:900 11px ui-monospace,monospace;padding:4px 6px;border-radius:8px;color:#140f15;background:var(--accent)}.charts{display:flex;gap:5px;margin-top:9px;flex-wrap:wrap}.lv{font:900 11px ui-monospace,monospace;border-radius:8px;padding:5px 6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.08)}.BASIC{color:var(--green)}.ADVANCED{color:var(--yellow)}.EXPERT{color:var(--red)}.MASTER{color:var(--purple)}.REMASTER{color:var(--blue)}.UTAGE{color:var(--pink)}
+    .empty,.loading{padding:42px 18px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:24px}.sentinel{height:40px}.err{background:rgba(255,102,110,.13);border:1px solid rgba(255,102,110,.35);padding:12px;border-radius:16px;color:#ffd6d8;margin:10px 0}@media (max-width:420px){.title{font-size:30px}.grid,.range{grid-template-columns:1fr}.card{grid-template-columns:64px 1fr}.jacket{width:64px;height:64px}.sub{display:block}.sub span{margin-right:8px}}
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="hero"><div><div class="kicker">flex-aquadx · mini app</div><h1 class="title">MaiMai<br>Track Finder</h1></div><div class="counter" id="count">—<span>tracks</span></div></header>
+  <section class="search">
+    <input id="q" placeholder="Название, артист, жанр или ID…" autocomplete="off" />
+    <div class="grid"><select id="version"><option value="">Все версии</option></select><select id="sort"><option value="level_desc">Сложность ↓</option><option value="level_asc">Сложность ↑</option><option value="version">Версия → сложность</option><option value="title">Название A–Z</option></select></div>
+    <div class="chips" id="diffs"></div>
+    <div class="range"><input id="min" inputmode="decimal" placeholder="Мин. уровень, напр. 12" /><input id="max" inputmode="decimal" placeholder="Макс. уровень, напр. 14.7" /></div>
+  </section>
+  <main><div id="error"></div><div class="list" id="list"></div><div id="state" class="loading">Загружаю каталог…</div><div class="sentinel" id="sentinel"></div></main>
+</div>
+<script>
+const tg=window.Telegram?.WebApp; tg?.ready?.(); tg?.expand?.();
+const $=id=>document.getElementById(id); const list=$('list'), state=$('state'), err=$('error'), count=$('count');
+const diffs=['ALL','BASIC','ADVANCED','EXPERT','MASTER','RE:MASTER','UTAGE']; let selectedDiff='', offset=0,total=0,loading=false,done=false,seq=0; const pageSize=80;
+$('diffs').innerHTML=diffs.map(d=>`<button class="chip ${d==='ALL'?'active':''}" data-d="${d}">${d}</button>`).join('');
+function params(reset=false){const p=new URLSearchParams({limit:pageSize,offset:reset?0:offset,sort:$('sort').value}); const q=$('q').value.trim(), ver=$('version').value, min=$('min').value.trim(), max=$('max').value.trim(); if(q)p.set('q',q); if(ver)p.set('version',ver); if(selectedDiff)p.set('difficulty',selectedDiff); if(min)p.set('min_level',min); if(max)p.set('max_level',max); return p}
+function cls(d){return d.replace(':','')} function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function card(t){const charts=(t.charts||[]).map(c=>`<span class="lv ${cls(c.difficulty)}">${c.difficulty.replace('RE:MASTER','RE:M')} ${Number(c.level).toFixed(1).replace('.0','')}</span>`).join('');return `<article class="card"><img class="jacket" loading="lazy" src="${esc(t.jacket)}" alt=""><div class="meta"><div class="row"><span class="pill">${esc(t.max_level??'—')}</span><div class="song">${esc(t.title||'Untitled')}</div></div><div class="artist">${esc(t.artist||'—')}</div><div class="sub"><span>${esc(t.version||'unknown version')}</span><span>${esc(t.genre||'')}</span><span>ID ${t.id}</span></div><div class="charts">${charts}</div></div></article>`}
+async function load(reset=false){if(loading)return; const my=++seq; loading=true; err.innerHTML=''; if(reset){offset=0;done=false;list.innerHTML='';state.className='loading';state.textContent='Ищу…'} try{const r=await fetch('/v1/maimai/catalog/tracks?'+params(reset)); if(!r.ok)throw new Error(await r.text()); const j=await r.json(); if(my!==seq)return; total=j.meta.total; count.innerHTML=`${total}<span>tracks</span>`; offset=(reset?0:offset)+j.data.length; done=offset>=total; list.insertAdjacentHTML('beforeend',j.data.map(card).join('')); state.style.display=done?(total?'none':'block'):'block'; state.className=total?'loading':'empty'; state.textContent=total?(done?'':'Загружаю ещё…'):'Ничего не найдено';}catch(e){err.innerHTML=`<div class="err">Ошибка загрузки: ${esc(e.message)}</div>`; state.style.display='none'}finally{loading=false}}
+let timer; function refresh(){clearTimeout(timer); timer=setTimeout(()=>load(true),160)}
+['q','sort','version','min','max'].forEach(id=>$(id).addEventListener('input',refresh)); $('sort').addEventListener('change',refresh); $('version').addEventListener('change',refresh);
+$('diffs').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b)return; selectedDiff=b.dataset.d==='ALL'?'':b.dataset.d; document.querySelectorAll('.chip').forEach(x=>x.classList.toggle('active',x===b)); load(true)});
+new IntersectionObserver(es=>{if(es[0].isIntersecting&&!done)load(false)},{rootMargin:'600px'}).observe($('sentinel'));
+(async()=>{try{const r=await fetch('/v1/maimai/catalog/versions'); const j=await r.json(); $('version').insertAdjacentHTML('beforeend',j.data.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join(''))}catch{} load(true)})();
+</script>
+</body>
+</html>

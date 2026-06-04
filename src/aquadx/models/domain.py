@@ -43,6 +43,7 @@ class MusicMeta(BaseModel):
     title: str | None = None
     artist: str | None = None
     genre: str | None = None
+    version: str | None = None
     bpm: float | None = None
     jacket: str | None = None  # URL до /v1/assets/maimai/music/{id}/jacket
     levels: list[float] = Field(default_factory=list)  # константы по уровням сложности

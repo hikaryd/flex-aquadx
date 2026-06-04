@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -17,6 +18,8 @@ from aquadx.models.domain import MusicMeta
 from aquadx.render import renderer
 from aquadx.render.cache_keys import compute_etag, image_cache_key
 from aquadx.render.jacket_loader import fetch_jacket, fetch_jackets
+from aquadx.render.templates.leaderboard import LeaderboardEntry, LeaderboardInput
+from aquadx.render.templates.leaderboard import render as render_leaderboard
 from aquadx.render.templates.rating_frame import RatingFrameInput, RatingItem
 from aquadx.render.templates.rating_frame import render as render_rating
 from aquadx.render.templates.track_result import TrackResultInput
@@ -81,6 +84,7 @@ async def recent_card(
     if index >= len(plays):
         raise NotFoundError(f"Recent play index out of range: {index} >= {len(plays)}")
     play = plays[index]
+    previous_rating = _previous_after_rating(plays, index)
 
     # Деталь профиля — для шапки. Best-effort: при сбое — None.
     summary_raw = await client.get(f"{MAI2_PREFIX}/user-summary", params={"username": username})
@@ -113,7 +117,8 @@ async def recent_card(
         late=int(play.late or 0),
         deluxe_score=int(play.deluxe_score or 0),
         deluxe_max=int(play.deluxe_score or 0),
-        rating_delta=int(play.after_rating or 0) - rating if play.after_rating else 0,
+        rating_delta=(int(play.after_rating) - previous_rating if play.after_rating and previous_rating is not None else 0),
+        combo_badge=_combo_badge(play),
         judgements=_judgements_for_render(play),
         note_accuracy=_note_accuracy_for_render(play),
         play_date=str(play.user_play_date or play.play_date or ""),
@@ -134,6 +139,21 @@ async def recent_card(
         build_png=_build,
         scale=scale,
     )
+
+
+def _previous_after_rating(plays: list[object], index: int) -> int | None:
+    """Rating before this play: next older recent row's after_rating.
+
+    `map_recent_plays` sorts newest-first, so for plays[index] the row at
+    index+1 is the immediately previous play available in the recent window.
+    The profile summary usually equals the latest afterRating, so subtracting
+    from summary hides `/rs` rating gains for index=0.
+    """
+    for older in plays[index + 1 :]:
+        after_rating = getattr(older, "after_rating", None)
+        if after_rating is not None:
+            return int(after_rating)
+    return None
 
 
 def _judgements_for_render(play: object) -> list[tuple[str, int]]:
@@ -258,6 +278,7 @@ async def score_card(
         deluxe_score=int(play.deluxe_score or 0),
         deluxe_max=int(play.deluxe_score or 0),
         rating_delta=0,
+        combo_badge=_combo_badge(detailed_play or play),
         judgements=_judgements_for_render(detailed_play or play),
         note_accuracy=_note_accuracy_for_render(detailed_play or play),
         play_date=str(
@@ -315,6 +336,151 @@ async def _matching_playlog_for_score(
         key=lambda p: (abs(float(p.achievement or 0) - achievement), -float(p.achievement or 0)),
     )
 
+
+
+def _combo_badge(play: object) -> str:
+    """Infer maimai combo badge, including + variants when detailed judgements exist.
+
+    Upstream best-score rows often omit boolean combo flags, while detailed
+    playlog rows have judgement counts. For Telegram cards, infer from
+    judgements first so FC/FC+/AP/AP+ still appears on `/rs` and `/mine`.
+    """
+    j = getattr(play, "judgements", None)
+    if j is not None:
+        perfect = int(getattr(j, "perfect", 0) or 0)
+        great = int(getattr(j, "great", 0) or 0)
+        good = int(getattr(j, "good", 0) or 0)
+        miss = int(getattr(j, "miss", 0) or 0)
+        if perfect == 0 and great == 0 and good == 0 and miss == 0:
+            return "AP+"
+        if great == 0 and good == 0 and miss == 0:
+            return "AP"
+        if good == 0 and miss == 0:
+            return "FC+"
+        if miss == 0:
+            return "FC"
+    if getattr(play, "is_all_perfect", None):
+        return "AP+" if getattr(play, "is_full_combo", None) else "AP"
+    if getattr(play, "is_full_combo", None):
+        return "FC"
+    return ""
+
+
+def _map_info_subtitle(music: MusicMeta | None, music_id: int, difficulty: str | None) -> str:
+    parts: list[str] = []
+    if music and music.artist:
+        parts.append(str(music.artist))
+    if difficulty:
+        diff_text = str(difficulty)
+        if music and music.levels:
+            level = music.levels[_safe_level_index(diff_text, music.levels)]
+            if level > 0:
+                diff_text = f"{diff_text} {level:g}"
+        parts.append(diff_text)
+    if music and music.genre:
+        parts.append(str(music.genre))
+    if music and music.bpm:
+        parts.append(f"BPM {music.bpm:g}")
+    parts.append(f"musicId {music_id}")
+    parts.append("сортировка по achievement/DX")
+    return " · ".join(parts)
+
+
+@router.get(
+    "/-/maimai/scores/leaderboard/card.png",
+    summary="PNG-лидерборд привязанных профилей по конкретной карте",
+    response_class=Response,
+)
+async def score_leaderboard_card(
+    usernames: str = Query(..., min_length=1, max_length=512),
+    musicId: int = Query(..., ge=1),
+    difficulty: str | None = Query(None),
+    title: str = Query("MaiMai map leaderboard", max_length=100),
+    scale: int = Query(1, ge=1, le=2),
+    client: AquadxClient = Depends(get_client),
+    lookup: dict[int, MusicMeta] = Depends(music_lookup),
+    cache: Cache = Depends(get_cache),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    names: list[str] = []
+    seen: set[str] = set()
+    for raw_name in usernames.split(","):
+        name = raw_name.strip()
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            names.append(name)
+            if len(names) >= 20:
+                break
+    if not names:
+        raise NotFoundError("No usernames for score leaderboard")
+
+    ids = [musicId]
+    gate = asyncio.Semaphore(5)
+
+    async def _load_one(name: str) -> LeaderboardEntry | None:
+        # Cache each player's score list separately, so the bot can assemble
+        # repeated chat leaderboards quickly without refetching every profile.
+        score_key = f"maimai-score-leaderboard|{name}|{musicId}"
+        raw = await cache.get(score_key)
+        if raw is None:
+            try:
+                async with gate:
+                    raw = await client.post(f"{MAI2_PREFIX}/user-music-from-list", params={"username": name}, json=ids)
+            except Exception:
+                return None
+            await cache.set(score_key, raw, ttl=settings.cache_ttl_player_seconds)
+        plays = map_recent_plays(raw if isinstance(raw, list) else [], music_lookup=lookup)
+        if difficulty:
+            plays = [p for p in plays if str(p.difficulty).upper() == difficulty.upper()]
+        if not plays:
+            return None
+        play = max(plays, key=lambda p: (float(p.achievement or 0), int(p.deluxe_score or 0)))
+        return LeaderboardEntry(
+            username=name,
+            rating=0,
+            rank=0,
+            achievement=float(play.achievement or 0),
+            score_rank=str(play.rank or ""),
+            deluxe_score=int(play.deluxe_score or 0),
+            combo_badge=_combo_badge(play),
+        )
+
+    loaded = await asyncio.gather(*(_load_one(name) for name in names))
+    entries = sorted((entry for entry in loaded if entry is not None), key=lambda e: (e.achievement or 0.0, e.deluxe_score or 0), reverse=True)
+    if not entries:
+        raise NotFoundError(f"No scores for musicId={musicId}, difficulty={difficulty or '*'}")
+    ranked = [
+        LeaderboardEntry(
+            username=entry.username,
+            rating=0,
+            rank=i + 1,
+            achievement=entry.achievement,
+            score_rank=entry.score_rank,
+            deluxe_score=entry.deluxe_score,
+            combo_badge=entry.combo_badge,
+        )
+        for i, entry in enumerate(entries)
+    ]
+    music = lookup.get(musicId)
+    subtitle = _map_info_subtitle(music, musicId, difficulty)
+    display_title = title
+    if (not display_title or display_title == "MaiMai map leaderboard") and music and music.title:
+        display_title = music.title
+    inp = LeaderboardInput(title=display_title, entries=ranked, subtitle=subtitle, value_label="TOP SCORE")
+    etag_payload = {"title": display_title, "musicId": musicId, "difficulty": difficulty, "subtitle": subtitle, "entries": [entry.__dict__ for entry in ranked]}
+
+    async def _build() -> bytes:
+        return await renderer.run_render(lambda: render_leaderboard(inp))
+
+    return await _png_response(
+        cache,
+        settings,
+        endpoint=f"score-leaderboard/{musicId}/{difficulty or ''}/" + ",".join(names),
+        etag_payload=etag_payload,
+        build_png=_build,
+        scale=scale,
+    )
 
 @router.get(
     "/{username}/maimai/rating/card.png",
@@ -389,6 +555,91 @@ async def rating_card(
         cache,
         settings,
         endpoint=f"rating/{username}",
+        etag_payload=etag_payload,
+        build_png=_build,
+        scale=scale,
+    )
+
+
+@router.get(
+    "/-/maimai/leaderboard/card.png",
+    summary="PNG-лидерборд нескольких maimai-профилей",
+    response_class=Response,
+)
+async def leaderboard_card(
+    usernames: str = Query(
+        ...,
+        min_length=1,
+        max_length=512,
+        description="Comma-separated AquaDX usernames, max 20 unique values",
+    ),
+    title: str = Query("MaiMai leaderboard", max_length=80),
+    scale: int = Query(1, ge=1, le=2),
+    client: AquadxClient = Depends(get_client),
+    lookup: dict[int, MusicMeta] = Depends(music_lookup),
+    cache: Cache = Depends(get_cache),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    names: list[str] = []
+    seen: set[str] = set()
+    for raw_name in usernames.split(","):
+        name = raw_name.strip()
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            names.append(name)
+            if len(names) >= 20:
+                break
+    if not names:
+        raise NotFoundError("No usernames for leaderboard")
+
+    gate = asyncio.Semaphore(4)
+
+    async def _load_one(name: str) -> LeaderboardEntry | None:
+        try:
+            async with gate:
+                summary_raw, rating_raw = await asyncio.gather(
+                    client.get(f"{MAI2_PREFIX}/user-summary", params={"username": name}),
+                    client.get(f"{MAI2_PREFIX}/user-rating", params={"username": name}),
+                )
+        except Exception:
+            return None
+        rating = int(summary_raw.get("rating") or 0) if isinstance(summary_raw, dict) else 0
+        b35_sum = 0
+        b15_sum = 0
+        best_count = 0
+        if isinstance(rating_raw, dict):
+            frame = map_rating_frame(rating_raw, music_lookup=lookup)
+            b35_sum = sum(int(t.rating_contribution or 0) for t in frame.best35)
+            b15_sum = sum(int(t.rating_contribution or 0) for t in frame.best15)
+            best_count = len(frame.best35) + len(frame.best15)
+        return LeaderboardEntry(username=name, rating=rating, rank=0, b35_sum=b35_sum, b15_sum=b15_sum, best_count=best_count)
+
+    loaded = await asyncio.gather(*(_load_one(name) for name in names))
+    entries = sorted((entry for entry in loaded if entry is not None), key=lambda e: e.rating, reverse=True)
+    if not entries:
+        raise NotFoundError("No valid profiles for leaderboard")
+    ranked = [
+        LeaderboardEntry(
+            username=entry.username,
+            rating=entry.rating,
+            rank=i + 1,
+            b35_sum=entry.b35_sum,
+            b15_sum=entry.b15_sum,
+            best_count=entry.best_count,
+        )
+        for i, entry in enumerate(entries)
+    ]
+    inp = LeaderboardInput(title=title, entries=ranked)
+    etag_payload = {"title": title, "entries": [entry.__dict__ for entry in ranked]}
+
+    async def _build() -> bytes:
+        return await renderer.run_render(lambda: render_leaderboard(inp))
+
+    return await _png_response(
+        cache,
+        settings,
+        endpoint="leaderboard/" + ",".join(names),
         etag_payload=etag_payload,
         build_png=_build,
         scale=scale,

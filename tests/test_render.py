@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from PIL import Image
 
+from aquadx.api.v1.cards_image import _combo_badge, _previous_after_rating
 from aquadx.cache.memory import TTLCache
 from aquadx.meta.loader import get_loader, reset_loader
 from aquadx.models.domain import MusicMeta
@@ -48,8 +49,8 @@ def _seed_meta() -> None:
 
 def test_track_template_renders_valid_png() -> None:
     inp = TrackResultInput(
-        title="オペラ！スペースオペラ！",
-        artist="ナユタン星人",
+        title="オペラ！スペースオペラ！ / Очень длинное название трека для Telegram portrait карточки",
+        artist="ナユタン星人 / Очень длинный артист / Long Artist Name",
         difficulty="MASTER",
         level=13.3,
         chart_tag="SEGM",
@@ -70,7 +71,7 @@ def test_track_template_renders_valid_png() -> None:
     img = Image.open(BytesIO(png))
     img.verify()
     img2 = Image.open(BytesIO(png))
-    assert img2.size == (1920, 1080)
+    assert img2.size == (1280, 1600)
     assert img2.format == "PNG"
 
 
@@ -208,6 +209,19 @@ def test_recent_card_cache_hit_on_second_call(client: TestClient) -> None:
     assert first.content == second.content
 
 
+def test_recent_card_rating_delta_uses_previous_recent_after_rating() -> None:
+    class Play:
+        def __init__(self, after_rating: int | None) -> None:
+            self.after_rating = after_rating
+
+    plays = [Play(15012), Play(15000), Play(14996)]
+
+    assert _previous_after_rating(plays, 0) == 15000
+    assert _previous_after_rating(plays, 1) == 14996
+    assert _previous_after_rating(plays, 2) is None
+
+
+
 def test_rating_card_endpoint_returns_png(client: TestClient) -> None:
     _seed_meta()
     renderer.reset_semaphore()
@@ -229,6 +243,52 @@ def test_rating_card_endpoint_returns_png(client: TestClient) -> None:
     img.verify()
     img2 = Image.open(BytesIO(response.content))
     assert img2.size == (1920, 1080)
+
+
+def test_combo_badge_infers_from_judgements() -> None:
+    class Judgements:
+        def __init__(self, perfect: int, great: int, good: int, miss: int) -> None:
+            self.perfect = perfect
+            self.great = great
+            self.good = good
+            self.miss = miss
+
+    class Play:
+        def __init__(self, judgements: Judgements) -> None:
+            self.judgements = judgements
+            self.is_all_perfect = False
+            self.is_full_combo = False
+
+    assert _combo_badge(Play(Judgements(perfect=144, great=7, good=0, miss=0))) == "FC+"
+    assert _combo_badge(Play(Judgements(perfect=144, great=7, good=1, miss=0))) == "FC"
+    assert _combo_badge(Play(Judgements(perfect=144, great=0, good=0, miss=0))) == "AP"
+    assert _combo_badge(Play(Judgements(perfect=0, great=0, good=0, miss=0))) == "AP+"
+
+
+def test_score_leaderboard_card_endpoint_returns_png(client: TestClient) -> None:
+    _seed_meta()
+    renderer.reset_semaphore()
+
+    def _score_response(request: object) -> Response:
+        username = str(request.url).split("username=", 1)[1]
+        if username.startswith("Alice"):
+            payload = [{"musicId": 42, "level": 3, "achievement": 1005000, "deluxscore": 2800, "isFullCombo": True, "maxCombo": 900}]
+        else:
+            payload = [{"musicId": 42, "level": 3, "achievement": 1009000, "deluxscore": 2810, "isAllPerfect": True, "isFullCombo": True, "maxCombo": 900}]
+        return Response(200, json=payload)
+
+    with respx.mock(assert_all_called=False) as r:
+        r.post(BASE + f"{MAI2}/user-music-from-list").mock(side_effect=_score_response)
+        response = client.get(
+            "/v1/players/-/maimai/scores/leaderboard/card.png"
+            "?usernames=Alice,Bob&musicId=42&difficulty=MASTER&title=Recent%20Track"
+        )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    img = Image.open(BytesIO(response.content))
+    img.verify()
+    img2 = Image.open(BytesIO(response.content))
+    assert img2.size == (1280, 1600)
 
 
 def test_ttl_cache_supports_bytes() -> None:
