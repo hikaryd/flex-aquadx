@@ -12,6 +12,9 @@ from aquadx.api.v1 import (
     cards_image as v1_cards_image,
 )
 from aquadx.api.v1 import (
+    catalog as v1_catalog,
+)
+from aquadx.api.v1 import (
     players as v1_players,
 )
 from aquadx.api.v1 import (
@@ -46,6 +49,8 @@ def create_app() -> FastAPI:
     app.include_router(v1_rankings.router)
     app.include_router(v1_scores.router)
     app.include_router(v1_cards_image.router)
+    app.include_router(v1_catalog.router)
+    app.add_api_route("/miniapp/maimai", v1_catalog.miniapp_index, include_in_schema=False)
     return app
 
 

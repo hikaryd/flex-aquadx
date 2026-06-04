@@ -138,6 +138,7 @@ def _parse_meta(raw: Any, base: str) -> dict[int, MusicMeta]:
             title=_str_or_none(value.get("name")),
             artist=_str_or_none(value.get("artist") or value.get("composer")),
             genre=_str_or_none(value.get("genre")),
+            version=_str_or_none(value.get("ver") or value.get("version")),
             bpm=bpm,
             jacket=jacket_url(mid, base),
             levels=levels,
